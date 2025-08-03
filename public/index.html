@@ -3,45 +3,46 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Update Variant Location</title>
+    <title>Variant Location Updater</title>
 
-    <!-- Shopify Polaris CSS (optional) -->
+    <!-- Polaris (lightweight) -->
     <link rel="stylesheet" href="https://unpkg.com/@shopify/polaris@11.0.0/dist/styles.css" />
 
-    <!-- HTML5 QR/Barcode scanner library -->
+    <!-- html5‑qrcode for camera scanning -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 
-    <!-- Shopify App Bridge (only for embedded mode) -->
+    <!-- App Bridge (only active inside Shopify iframe) -->
     <script src="https://unpkg.com/@shopify/app-bridge@3"></script>
 
     <style>
-      body {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-        padding: 20px; max-width: 600px; margin: 0 auto;
-      }
-      .field { margin-bottom: 1rem; }
-      .scanner { margin-top: 0.5rem; display: none; }
-      #status { margin-top: 1rem; font-weight: bold; }
-      button { background: #008060; color: #fff; border: none; padding: 0.6rem 1.2rem; border-radius: 4px; cursor: pointer; }
-      button:disabled { background: #bbb; }
+      body { font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif; max-width:640px; margin:0 auto; padding:24px; }
+      .field { margin-bottom:1rem; }
+      .scanner { display:none; margin-top:.5rem; }
+      #status { margin-top:1rem; font-weight:600; }
+      #productInfo { margin-top:.5rem; color:#333; font-style:italic; }
+      button { background:#008060; color:#fff; border:none; padding:.6rem 1.2rem; border-radius:4px; cursor:pointer; }
+      button:disabled { background:#bbb; }
     </style>
   </head>
   <body>
     <h1>Update Product Location</h1>
 
-    <!-- Product barcode -->
+    <!-- product barcode -->
     <div class="field">
       <label for="barcode">Product Barcode</label>
-      <input id="barcode" placeholder="Scan or enter barcode" />
-      <button id="scanBarcodeBtn">Scan Barcode</button>
+      <input id="barcode" placeholder="Scan or type barcode" />
+      <button id="scanBarcodeBtn" type="button">Scan</button>
       <div id="barcodeScanner" class="scanner"></div>
     </div>
 
-    <!-- Shelf/location code -->
+    <!-- product name (read‑only) -->
+    <div id="productInfo"></div>
+
+    <!-- location -->
     <div class="field">
       <label for="location">Location</label>
-      <input id="location" placeholder="Scan or enter location" />
-      <button id="scanLocationBtn">Scan Location</button>
+      <input id="location" placeholder="Scan or type location" />
+      <button id="scanLocationBtn" type="button">Scan</button>
       <div id="locationScanner" class="scanner"></div>
     </div>
 
@@ -49,117 +50,77 @@
     <div id="status"></div>
 
     <script>
-      /* -----------------------------------------------
-       *  App‑Bridge initialisation – only run when:
-       *    • The app is truly embedded (host param exists)
-       *    • You have replaced the placeholder API key
-       * -----------------------------------------------*/
-      const AppBridge = window["app-bridge"];
-      const host = new URLSearchParams(window.location.search).get("host");
-      const PUBLIC_API_KEY = "YOUR_APP_API_KEY"; // ← REPLACE with real key from Partner > App credentials
-
-      if (AppBridge && host && !PUBLIC_API_KEY.includes("YOUR_APP_API_KEY")) {
-        const createApp = AppBridge.default || AppBridge.createApp;
-        createApp({ apiKey: PUBLIC_API_KEY, host, forceRedirect: true });
+      /*****  App Bridge (optional) *****/
+      const hostParam = new URLSearchParams(window.location.search).get('host');
+      const PUBLIC_API_KEY = 'YOUR_APP_API_KEY'; // replace
+      if (window['app-bridge'] && hostParam && !PUBLIC_API_KEY.includes('YOUR_APP_API_KEY')) {
+        const createApp = window['app-bridge'].default || window['app-bridge'].createApp;
+        createApp({ apiKey: PUBLIC_API_KEY, host: hostParam, forceRedirect: true });
       }
 
-      /* --------------------------------------------------
-       *  DOM references & helpers
-       * --------------------------------------------------*/
-      const barcodeInput = document.getElementById("barcode");
-      const locationInput = document.getElementById("location");
-      const statusDiv = document.getElementById("status");
-      const updateBtn = document.getElementById("updateBtn");
+      /*****  DOM refs *****/
+      const barcodeInput   = document.getElementById('barcode');
+      const locationInput  = document.getElementById('location');
+      const productInfoDiv = document.getElementById('productInfo');
+      const statusDiv      = document.getElementById('status');
+      const updateBtn      = document.getElementById('updateBtn');
 
-      const setStatus = (msg, error = false) => {
+      let cachedVariantId = null; // store after lookup
+
+      const setStatus = (msg, error=false) => {
         statusDiv.textContent = msg;
-        statusDiv.style.color = error ? "#b00020" : "#008060";
+        statusDiv.style.color = error ? '#b00020' : '#008060';
       };
 
-      const enableIfReady = () => {
-        updateBtn.disabled = !(barcodeInput.value.trim() && locationInput.value.trim());
+      const readyCheck = () => {
+        updateBtn.disabled = !(cachedVariantId && locationInput.value.trim());
       };
-      barcodeInput.addEventListener("input", enableIfReady);
-      locationInput.addEventListener("input", enableIfReady);
+      barcodeInput.addEventListener('input',   () => { cachedVariantId=null; productInfoDiv.textContent=''; readyCheck(); });
+      locationInput.addEventListener('input', readyCheck);
 
-      /* --------------------------------------------------
-       *  Scanner toggle (barcode or location)
-       * --------------------------------------------------*/
-      function toggleScanner(type) {
+      /*****  Scanner helper *****/
+      function launchScanner(type) {
         const scannerDiv = document.getElementById(`${type}Scanner`);
-        const targetInput = type === "barcode" ? barcodeInput : locationInput;
-
-        if (scannerDiv.style.display === "block") {
-          scannerDiv.innerHTML = "";
-          scannerDiv.style.display = "none";
-          return;
-        }
-
-        scannerDiv.innerHTML = "";
-        scannerDiv.style.display = "block";
-        const html5QrCode = new Html5Qrcode(scannerDiv.id);
-
-        html5QrCode.start(
-          { facingMode: "environment" },
-          {
-            fps: 10,
-            qrbox: { width: 250, height: 250 },
-            formatsToSupport: [
-              Html5QrcodeSupportedFormats.UPC_A,
-              Html5QrcodeSupportedFormats.EAN_13,
-              Html5QrcodeSupportedFormats.CODE_128,
-              Html5QrcodeSupportedFormats.QR_CODE,
-            ],
-          },
-          (decodedText) => {
-            targetInput.value = decodedText;
-            enableIfReady();
-            html5QrCode.stop();
-            scannerDiv.style.display = "none";
-          }
-        ).catch((err) => {
-          console.error(err);
-          setStatus("Camera access denied or unavailable.", true);
-          scannerDiv.style.display = "none";
-        });
+        const targetInput = type==='barcode' ? barcodeInput : locationInput;
+        if (scannerDiv.style.display==='block') { scannerDiv.innerHTML=''; scannerDiv.style.display='none'; return; }
+        scannerDiv.innerHTML=''; scannerDiv.style.display='block';
+        const qr = new Html5Qrcode(scannerDiv.id);
+        qr.start({ facingMode:'environment' }, { fps:10, qrbox:{width:250,height:250}, formatsToSupport:[Html5QrcodeSupportedFormats.UPC_A,Html5QrcodeSupportedFormats.EAN_13,Html5QrcodeSupportedFormats.CODE_128,Html5QrcodeSupportedFormats.QR_CODE] },
+          txt=>{ targetInput.value=txt; if (type==='barcode'){ cachedVariantId=null; productInfoDiv.textContent=''; } readyCheck(); qr.stop(); scannerDiv.style.display='none'; },
+          err=>{})
+          .catch(e=>{ console.error(e); setStatus('Cannot access camera',true); scannerDiv.style.display='none'; });
       }
-      document.getElementById("scanBarcodeBtn").onclick = () => toggleScanner("barcode");
-      document.getElementById("scanLocationBtn").onclick = () => toggleScanner("location");
+      document.getElementById('scanBarcodeBtn').onclick = ()=> launchScanner('barcode');
+      document.getElementById('scanLocationBtn').onclick = ()=> launchScanner('location');
 
-      /* --------------------------------------------------
-       *  Update button action
-       * --------------------------------------------------*/
-      updateBtn.onclick = async () => {
+      /*****  Variant lookup on barcode field blur *****/
+      barcodeInput.addEventListener('blur', async () => {
         const barcode = barcodeInput.value.trim();
-        const location = locationInput.value.trim();
-        if (!barcode || !location) return;
-
-        setStatus("Looking up variant…");
+        if (!barcode) return;
+        setStatus('Looking up variant…');
         try {
-          const lookup = await fetch(`/lookup-variant`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ barcode }),
-          });
-          if (!lookup.ok) throw new Error("Variant lookup failed");
-          const { variant } = await lookup.json();
+          const res = await fetch('/lookup-variant', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ barcode }) });
+          if (!res.ok) throw new Error('Variant lookup failed');
+          const { variant, productTitle } = await res.json();
+          cachedVariantId = variant.id;
+          productInfoDiv.textContent = productTitle ? `Product: ${productTitle}` : `Variant ID: ${variant.id}`;
+          setStatus('Variant found ✓');
+          readyCheck();
+        } catch(e){ cachedVariantId=null; productInfoDiv.textContent=''; setStatus(e.message,true); readyCheck(); }
+      });
 
-          setStatus("Updating location…");
-          const upd = await fetch(`/update-location`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ variantId: variant.id, locationValue: location }),
-          });
-          if (!upd.ok) throw new Error("Location update failed");
-
-          setStatus("Location updated successfully!");
-          barcodeInput.value = "";
-          locationInput.value = "";
-          updateBtn.disabled = true;
-        } catch (err) {
-          console.error(err);
-          setStatus(err.message, true);
-        }
+      /*****  Update metafield *****/
+      updateBtn.onclick = async () => {
+        const locationVal = locationInput.value.trim();
+        if (!cachedVariantId || !locationVal) return;
+        setStatus('Updating location…');
+        try {
+          const res = await fetch('/update-location', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ variantId: cachedVariantId, locationValue: locationVal }) });
+          if (!res.ok) throw new Error('Update failed');
+          setStatus('Location updated!');
+          // reset
+          barcodeInput.value=''; locationInput.value=''; productInfoDiv.textContent=''; cachedVariantId=null; updateBtn.disabled=true;
+        } catch(e){ setStatus(e.message,true); }
       };
     </script>
   </body>

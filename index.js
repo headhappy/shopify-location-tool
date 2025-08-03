@@ -1,149 +1,120 @@
-const express = require('express');
-const axios = require('axios');
-const bodyParser = require('body-parser');
-const path = require('path');
+/* ----------  server/index.js  ---------- */
+/*  Variant Location Updater – Express backend
+    1. POST /lookup-variant  – finds variant(s) by barcode
+    2. POST /update-location – writes stock.location metafield             */
 
-/*
- * Simple Shopify variant location updater
- *
- * This Express server exposes two endpoints:
- *   GET /lookup-variant?barcode=UPC_CODE
- *     → Looks up the first product variant matching the provided barcode.
- *   POST /update-location
- *     → Accepts JSON { variantId: "gid://shopify/ProductVariant/123", location: "Shelf A" }
- *       and writes a metafield (stock.location) to that variant.
- *
- * The server uses your Shopify Admin API token and store domain, supplied via
- * environment variables. See README.md for setup instructions.
- */
+import express from "express";
+import fetch   from "node-fetch";          // node 18+ has global fetch, but this keeps it consistent
+import dotenv  from "dotenv";
+dotenv.config();
 
-// Load environment variables from .env if present
-require('dotenv').config();
-
-const app = express();
+const app  = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware to parse JSON bodies
-app.use(bodyParser.json());
-// Serve the front‑end files from the public directory
-app.use(express.static(path.join(__dirname, 'public')));
+const SHOP  = process.env.SHOPIFY_SHOP;          // your-store.myshopify.com
+const TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;  // shpat_xxx
+const API   = "2024-07";                         // Admin API version
 
-// Validate required environment variables
-const { SHOPIFY_SHOP, SHOPIFY_ACCESS_TOKEN, SHOPIFY_API_VERSION } = process.env;
-if (!SHOPIFY_SHOP || !SHOPIFY_ACCESS_TOKEN) {
-  console.error('Missing required SHOPIFY_SHOP or SHOPIFY_ACCESS_TOKEN environment variables.');
+if (!SHOP || !TOKEN) {
+  console.error("❌  Set SHOPIFY_SHOP & SHOPIFY_ACCESS_TOKEN in env.");
   process.exit(1);
 }
-const API_VERSION = SHOPIFY_API_VERSION || '2024-04';
 
-// Helper to call Shopify GraphQL API
-async function callShopify(query, variables = {}) {
-  const url = `https://${SHOPIFY_SHOP}/admin/api/${API_VERSION}/graphql.json`;
-  try {
-    const response = await axios.post(
-      url,
-      { query, variables },
-      {
-        headers: {
-          'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-    if (response.data.errors) {
-      throw new Error(JSON.stringify(response.data.errors));
-    }
-    return response.data.data;
-  } catch (err) {
-    console.error('Shopify API error:', err.message);
-    throw err;
-  }
+app.use(express.json());
+app.use(express.static("public"));               // serves index.html
+
+/* ---------- helper to call Admin GraphQL ---------- */
+async function shopifyGraph(query, variables = {}) {
+  const r = await fetch(`https://${SHOP}/admin/api/${API}/graphql.json`, {
+    method: "POST",
+    headers: {
+      "X-Shopify-Access-Token": TOKEN,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({ query, variables }),
+  });
+  const { data, errors } = await r.json();
+  if (errors) throw new Error(JSON.stringify(errors));
+  return data;
 }
 
-// Endpoint to look up a variant by barcode
-app.get('/lookup-variant', async (req, res) => {
-  const barcode = req.query.barcode;
-  if (!barcode) {
-    return res.status(400).json({ error: 'Missing barcode parameter' });
-  }
-  // GraphQL query to search product variants by barcode
-  const query = `
-    query ($barcode: String!) {
-      productVariants(first: 1, query: $barcode) {
-        edges {
-          node {
-            id
-            sku
-            title
-            product {
-              title
-            }
-            metafield(namespace: "stock", key: "location") {
+/* ----------  /lookup-variant  ---------- */
+app.post("/lookup-variant", async (req, res) => {
+  const { barcode } = req.body;
+  if (!barcode) return res.status(400).json({ error: "Barcode required" });
+
+  try {
+    const query = `
+      query ($q: String!) {
+        productVariants(first: 20, query: $q) {
+          edges {
+            node {
               id
-              value
+              title
+              barcode
+              product { title }
+              metafield(namespace: "stock", key: "location") { value }
             }
           }
         }
-      }
+      }`;
+    const data = await shopifyGraph(query, { q: `barcode:${barcode}` });
+    const hits = data.productVariants.edges.map(e => e.node);
+
+    if (hits.length === 0)
+      return res.status(404).json({ error: "No variant matches" });
+
+    if (hits.length === 1) {
+      const v = hits[0];
+      return res.json({
+        variant: { id: v.id },
+        productTitle: v.product.title,
+        currentLocation: v.metafield?.value || "",
+      });
     }
-  `;
-  try {
-    const data = await callShopify(query, { barcode });
-    const variantEdge = data.productVariants.edges[0];
-    if (!variantEdge) {
-      return res.status(404).json({ error: 'Variant not found for barcode' });
-    }
-    const variant = variantEdge.node;
-    res.json(variant);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to lookup variant', details: error.message });
+
+    // multiple matches → send array
+    res.json({
+      variants: hits.map(v => ({
+        id: v.id,
+        title: `${v.product.title} – ${v.title}`,
+        currentLocation: v.metafield?.value || "",
+      })),
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Lookup failed" });
   }
 });
 
-// Endpoint to update variant metafield with location
-app.post('/update-location', async (req, res) => {
-  const { variantId, location } = req.body;
-  if (!variantId || !location) {
-    return res.status(400).json({ error: 'variantId and location required' });
-  }
-  const mutation = `
-    mutation metafieldsSet($metafields: [MetafieldsSetInput!]!) {
-      metafieldsSet(metafields: $metafields) {
-        metafields {
-          id
-          key
-          namespace
-          value
-        }
-        userErrors {
-          field
-          message
-        }
-      }
-    }
-  `;
-  const metafields = [
-    {
-      ownerId: variantId,
-      namespace: 'stock',
-      key: 'location',
-      type: 'single_line_text_field',
-      value: location,
-    },
-  ];
+/* ----------  /update-location  ---------- */
+app.post("/update-location", async (req, res) => {
+  const { variantId, locationValue } = req.body;
+  if (!variantId || locationValue === undefined)
+    return res.status(400).json({ error: "variantId & locationValue required" });
+
   try {
-    const data = await callShopify(mutation, { metafields });
-    const result = data.metafieldsSet;
-    if (result.userErrors && result.userErrors.length > 0) {
-      return res.status(400).json({ error: 'Error updating metafield', userErrors: result.userErrors });
-    }
-    res.json({ success: true, metafields: result.metafields });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to update location', details: error.message });
+    const mut = `
+      mutation setLoc($id: ID!, $val: String!) {
+        metafieldsSet(metafields: [{
+          ownerId: $id,
+          namespace: "stock",
+          key: "location",
+          type: "single_line_text_field",
+          value: $val
+        }]) { userErrors { field message } }
+      }`;
+    const r = await shopifyGraph(mut, { id: variantId, val: locationValue });
+    if (r.metafieldsSet.userErrors.length)
+      throw new Error(r.metafieldsSet.userErrors[0].message);
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Save failed" });
   }
 });
 
-// Start the server
-app.listen(PORT, () => {
-  console.log(`Shopify location tool listening on port ${PORT}`);
-});
+app.listen(PORT, () =>
+  console.log(`🚀  Variant Location server listening on http://localhost:${PORT}`)
+);

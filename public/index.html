@@ -1,150 +1,131 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Variant Location Updater</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Update Variant Location</title>
+
+  <!-- Shopify Polaris CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/@shopify/polaris@11.0.0/dist/styles.css" />
+  <!-- HTML5 QR/Barcode scanner library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+  <!-- Shopify App Bridge -->
+  <script src="https://unpkg.com/@shopify/app-bridge@3"></script>
+
   <style>
     body {
-      font-family: sans-serif;
-      padding: 16px;
-      max-width: 600px;
-      margin: 0 auto;
+      padding: 20px;
+      font-family: -apple-system, BlinkMacSystemFont, 'San Francisco', Roboto, 'Segoe UI', 'Helvetica Neue', sans-serif;
     }
-    .form-group {
-      margin-bottom: 1rem;
-    }
-    label {
-      display: block;
-      margin-bottom: 0.3rem;
-      font-weight: bold;
-    }
-    input {
-      width: 100%;
-      padding: 0.5rem;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-    }
-    button {
-      padding: 0.6rem 1.2rem;
-      border: none;
-      background-color: #008060;
-      color: #fff;
-      font-size: 1rem;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    button:disabled {
-      background-color: #bbb;
-    }
-    .message {
-      margin-top: 1rem;
-      padding: 0.5rem;
-    }
-    .error {
-      color: #b00020;
-    }
-    .success {
-      color: #008060;
-    }
+    .field { margin-bottom: 1rem; }
+    .scanner { margin-top: 0.5rem; display: none; }
+    #status { margin-top: 1rem; font-weight: bold; }
   </style>
-  <!-- Include html5-qrcode library from CDN for barcode scanning -->
-  <script src="https://unpkg.com/html5-qrcode@2.3.8/minified/html5-qrcode.min.js"></script>
 </head>
 <body>
-  <h1>Update Variant Location</h1>
-  <p>Scan a product barcode and then a location QR code, or enter values manually.</p>
+  <h1>Update Product Location</h1>
 
-  <div class="form-group">
-    <label for="barcode">Product Barcode</label>
-    <input type="text" id="barcode" placeholder="Scan or enter product barcode" />
-    <button id="scan-product">Scan Product Barcode</button>
+  <div class="field">
+    <label>Product Barcode:</label>
+    <input id="barcode" placeholder="Scan or enter barcode" />
+    <button id="scanBarcodeBtn">Scan Barcode</button>
+    <div id="barcodeScanner" class="scanner"></div>
   </div>
 
-  <div class="form-group">
-    <label for="location">Location</label>
-    <input type="text" id="location" placeholder="Scan or enter location" />
-    <button id="scan-location">Scan Location Code</button>
+  <div class="field">
+    <label>Location:</label>
+    <input id="location" placeholder="Scan or enter location" />
+    <button id="scanLocationBtn">Scan Location</button>
+    <div id="locationScanner" class="scanner"></div>
   </div>
 
-  <button id="update-btn" disabled>Update Location</button>
-  <div class="message" id="message"></div>
+  <button id="updateBtn">Update Location</button>
 
-  <!-- Divs for QR scanner popups -->
-  <div id="reader" style="width:100%; max-width:400px; margin-top:20px; display:none;"></div>
+  <div id="status"></div>
 
   <script>
-    // Initialize scanner when needed
-    let html5QrcodeScanner;
-    function startScanner(targetInput) {
-      const readerElem = document.getElementById('reader');
-      readerElem.style.display = 'block';
-      html5QrcodeScanner = new Html5Qrcode('reader');
-      html5QrcodeScanner.start(
+    const barcodeInput = document.getElementById('barcode');
+    const locationInput = document.getElementById('location');
+    const statusDiv = document.getElementById('status');
+
+    function toggleScanner(type) {
+      const scannerDiv = document.getElementById(type + 'Scanner');
+      const inputField = type === 'barcode' ? barcodeInput : locationInput;
+
+      if (scannerDiv.style.display === 'block') {
+        scannerDiv.innerHTML = '';
+        scannerDiv.style.display = 'none';
+        return;
+      }
+
+      scannerDiv.style.display = 'block';
+      const html5QrCode = new Html5Qrcode(scannerDiv.id);
+
+      html5QrCode.start(
         { facingMode: 'environment' },
-        { fps: 10, qrbox: { width: 250, height: 250 } },
-        (decodedText) => {
-          document.getElementById(targetInput).value = decodedText;
-          html5QrcodeScanner.stop();
-          readerElem.style.display = 'none';
-          updateButtonState();
+        {
+          fps: 10,
+          qrbox: { width: 250, height: 250 },
+          formatsToSupport: [
+            Html5QrcodeSupportedFormats.UPC_A,
+            Html5QrcodeSupportedFormats.EAN_13,
+            Html5QrcodeSupportedFormats.CODE_128,
+            Html5QrcodeSupportedFormats.QR_CODE
+          ]
         },
-        (errorMessage) => {
-          // ignore scanning errors
+        (decodedText) => {
+          inputField.value = decodedText;
+          html5QrCode.stop().catch(console.error);
+          scannerDiv.style.display = 'none';
         }
-      ).catch(err => {
-        console.error('Error starting scanner:', err);
-        readerElem.style.display = 'none';
+      ).catch((err) => {
+        console.error(err);
+        statusDiv.textContent = 'Could not access the camera. Check permissions.';
+        scannerDiv.style.display = 'none';
       });
     }
 
-    document.getElementById('scan-product').addEventListener('click', () => {
-      startScanner('barcode');
-    });
-    document.getElementById('scan-location').addEventListener('click', () => {
-      startScanner('location');
-    });
+    document.getElementById('scanBarcodeBtn').onclick = () => toggleScanner('barcode');
+    document.getElementById('scanLocationBtn').onclick = () => toggleScanner('location');
 
-    function updateButtonState() {
-      const barcode = document.getElementById('barcode').value.trim();
-      const location = document.getElementById('location').value.trim();
-      document.getElementById('update-btn').disabled = !(barcode && location);
-    }
-    document.getElementById('barcode').addEventListener('input', updateButtonState);
-    document.getElementById('location').addEventListener('input', updateButtonState);
+    document.getElementById('updateBtn').onclick = async () => {
+      const barcode = barcodeInput.value.trim();
+      const location = locationInput.value.trim();
 
-    document.getElementById('update-btn').addEventListener('click', async () => {
-      const messageElem = document.getElementById('message');
-      messageElem.textContent = '';
-      messageElem.className = 'message';
-      const barcode = document.getElementById('barcode').value.trim();
-      const location = document.getElementById('location').value.trim();
-      if (!barcode || !location) return;
+      if (!barcode || !location) {
+        statusDiv.textContent = 'Please fill both fields.';
+        return;
+      }
+
+      statusDiv.textContent = 'Updating...';
+
       try {
-        // Step 1: Look up variant
-        const lookupRes = await fetch(`/lookup-variant?barcode=${encodeURIComponent(barcode)}`);
-        if (!lookupRes.ok) {
-          const err = await lookupRes.json();
-          throw new Error(err.error || 'Variant lookup failed');
-        }
-        const variant = await lookupRes.json();
-        // Step 2: Update location
-        const updateRes = await fetch('/update-location', {
+        const lookupResp = await fetch('/lookup-variant', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ variantId: variant.id, location }),
+          body: JSON.stringify({ barcode })
         });
-        if (!updateRes.ok) {
-          const err = await updateRes.json();
-          throw new Error(err.error || 'Update failed');
-        }
-        messageElem.textContent = 'Location updated successfully!';
-        messageElem.classList.add('success');
+
+        if (!lookupResp.ok) throw new Error('Variant lookup failed');
+
+        const { variant } = await lookupResp.json();
+
+        const updateResp = await fetch('/update-location', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ variantId: variant.id, locationValue: location })
+        });
+
+        if (!updateResp.ok) throw new Error('Location update failed');
+
+        statusDiv.textContent = 'Location updated successfully!';
+        barcodeInput.value = '';
+        locationInput.value = '';
       } catch (err) {
-        messageElem.textContent = err.message;
-        messageElem.classList.add('error');
+        console.error(err);
+        statusDiv.textContent = err.message;
       }
-    });
+    };
   </script>
 </body>
 </html>

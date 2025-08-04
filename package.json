@@ -4,7 +4,7 @@
   "description": "Embedded Shopify admin app to scan barcodes and update variant location metafields.",
   "type": "module",
   "scripts": {
-    "start": "node server/index.js"
+    "start": "node index.js"
   },
   "keywords": [
     "shopify",

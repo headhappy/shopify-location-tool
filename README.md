@@ -1,76 +1,227 @@
-# Shopify Variant Location Updater
+# Head Happy Stock Control + Locations
 
-This is a simple Shopify admin tool that lets you scan a product barcode, select or scan a location, and update a custom metafield on the corresponding product variant. It works well on mobile devices and is intended to be embedded in your Shopify admin via a private or custom app.
+This is Head Happy's Shopify admin bridge for two connected jobs:
 
-## Features
+1. **Locations** — scan a product barcode, scan/type a shelf location, and write the location to the variant metafield `stock.location`.
+2. **Stock control** — pull live Shopify inventory by SKU and export it as CSV/JSON so Restocky can use Shopify as the live stock source instead of relying on manual Stocky exports.
 
-* **Scan Product Barcode** – Uses the device camera to scan UPC or barcode codes. Alternatively, users can type the code manually.
-* **Scan Location Code** – Scan a shelf or location QR code or type a location manually.
-* **Look up variant** – The app searches your Shopify store for the first product variant matching the barcode using the `productVariants` GraphQL query.
-* **Write metafield** – When you update, it uses the `metafieldsSet` mutation to write a `stock.location` metafield on the variant.
-* **Mobile friendly** – Works in your phone’s browser when used inside the Shopify admin.
+The app is designed to run locally during development and on Render for live use.
 
-## Getting Started
+---
 
-### Prerequisites
+## Current Features
 
-* A Shopify store.
-* A private or custom app configured in Shopify with access to **read and write product metafields** and **read products**.
-* Node.js 16+ installed locally or on your hosting platform.
+### Location scanner
 
-### Clone or Download
+* Scan or type a product barcode.
+* Look up matching Shopify product variants.
+* Scan or type a shelf/location code.
+* Write the selected location to the variant metafield `stock.location`.
 
-If you are using GitHub:
+### Live Shopify stock export
 
-```bash
-git clone https://github.com/your-account/shopify-location-tool.git
-cd shopify-location-tool
+Read-only stock endpoints have been added for Restocky/Rotaty workflows:
+
+```text
+GET /health
+GET /api/locations
+GET /api/shopify-stock.json
+GET /api/shopify-stock.csv
 ```
 
-Or download the repository as a ZIP and extract it.
+The stock exports include:
 
-### Environment Variables
-
-Rename `.env.example` to `.env` and fill in your store details:
-
+```text
+Product
+Variant
+SKU
+Barcode
+Vendor
+Tags
+ProductStatus
+Tracked
+Available
+Location
+LocationId
+InventoryItemId
+VariantId
+ProductId
+Price
+Handle
 ```
-SHOPIFY_SHOP=myshop.myshopify.com
+
+These endpoints are intended to become the replacement for the Stocky low-stock CSV feed.
+
+---
+
+## Example URLs
+
+Download all active live stock as CSV:
+
+```text
+/api/shopify-stock.csv
+```
+
+Download stock as JSON:
+
+```text
+/api/shopify-stock.json
+```
+
+Filter by tag, for example small waterpipes:
+
+```text
+/api/shopify-stock.csv?tag=WTPG_S_
+```
+
+Only show rows with stock above zero:
+
+```text
+/api/shopify-stock.csv?inStockOnly=1
+```
+
+Filter by SKU text:
+
+```text
+/api/shopify-stock.csv?skuContains=WTPG_S
+```
+
+Filter by Shopify location once you know the location ID:
+
+```text
+/api/shopify-stock.csv?locationId=gid://shopify/Location/123456789
+```
+
+List Shopify locations:
+
+```text
+/api/locations
+```
+
+Health check:
+
+```text
+/health
+```
+
+---
+
+## Restocky Direction
+
+The planned flow is:
+
+```text
+live_product_data.csv  = SKU + RO/ROP + supplier/category/business rules
+Shopify API            = live stock + locations + product/variant data
+Restocky Merge         = joins both by SKU and builds order/jobs
+Order Board            = staff execution
+Rotaty                 = shelf/display decisions
+```
+
+In the first stage, this app only supplies the Shopify live stock feed. Restocky will still compare against `live_product_data.csv`, where Head Happy currently stores ROP values.
+
+---
+
+## Environment Variables
+
+Create a `.env` file locally or set these in Render:
+
+```text
+SHOPIFY_SHOP=headhappyhemp.myshopify.com
 SHOPIFY_ACCESS_TOKEN=shpat_...
-SHOPIFY_API_VERSION=2024-04
+SHOPIFY_API_VERSION=2024-07
 PORT=3000
 ```
 
-* **SHOPIFY_SHOP** – Your `.myshopify.com` domain (no https://).
-* **SHOPIFY_ACCESS_TOKEN** – Admin API access token from your private or custom app.
-* **SHOPIFY_API_VERSION** – (Optional) Admin API version. Defaults to `2024-04` if omitted.
-* **PORT** – Port the server will listen on. Defaults to 3000.
+* **SHOPIFY_SHOP** — your `.myshopify.com` domain, without `https://`.
+* **SHOPIFY_ACCESS_TOKEN** — Admin API access token from a Shopify custom app.
+* **SHOPIFY_API_VERSION** — optional. Defaults to `2024-07`.
+* **PORT** — optional. Defaults to `3000`.
 
-### Install Dependencies & Run
+The Shopify token must stay server-side. Do not put it in browser JavaScript.
+
+---
+
+## Shopify App Permissions
+
+For the current app you need Admin API access for:
+
+* Read products
+* Read inventory
+* Read locations
+* Read and write product/variant metafields if using the location scanner
+
+Later, if the app receives stock or changes stock quantities, it will also need inventory write permissions.
+
+---
+
+## Install and Run Locally
 
 ```bash
 npm install
 npm start
 ```
 
-The server will start on `http://localhost:3000` (or the port you set). Open this URL in your browser to use the tool.
+Then open:
 
-### Embedding in Shopify Admin
+```text
+http://localhost:3000
+```
 
-1. **Create a Custom or Private App** – In your Shopify admin, go to *Settings → Apps and sales channels → Develop apps*. Create a new app and add **Admin API** credentials with access to Products and Metafields.
-2. **Set the App URL** – Under *App setup*, set the App URL to your hosted server’s HTTPS URL (e.g., `https://your-tool.onrender.com`). Shopify requires HTTPS for embedded apps.
-3. **Install the App** – Install the app on your store. It will appear under the **Apps** menu in your admin.
-4. **Use the App** – From your mobile or desktop Shopify admin, open the app from the Apps menu. It will load the `index.html` from the `public` folder and allow you to scan barcodes and update variant locations.
+Test the stock export:
 
-### Deployment
+```text
+http://localhost:3000/api/shopify-stock.csv
+```
 
-This app can be hosted on any platform that runs Node.js. Popular options include Render, Heroku, Vercel (converted to serverless functions), or your own server. Make sure the app is accessible via HTTPS when embedding in Shopify.
+---
+
+## Deploy on Render
+
+1. Connect Render to this GitHub repo.
+2. Set the build command:
+
+```bash
+npm install
+```
+
+3. Set the start command:
+
+```bash
+npm start
+```
+
+4. Add the environment variables in Render.
+5. Open:
+
+```text
+https://your-render-app.onrender.com/health
+```
+
+Then test:
+
+```text
+https://your-render-app.onrender.com/api/shopify-stock.csv
+```
+
+---
 
 ## Important Notes
 
-* The lookup endpoint returns the **first** variant found by barcode. If multiple variants share the same barcode, only the first will be updated.
-* The metafield key and namespace are hard‑coded to `stock.location`. If your store uses a different key or namespace, update `index.js` accordingly.
-* This app does **not** modify inventory quantities or product details; it only writes a simple metafield.
+* The stock endpoints are read-only.
+* ROP is not calculated here yet. ROP currently comes from `live_product_data.csv` and is joined later in Restocky.
+* Product tags are treated as Shopify tags. For Head Happy category matching, use clean tags like `WTPG_S_` where possible.
+* The location scanner still writes `stock.location` to the variant metafield.
+* The app is now broader than the original location scanner, but the old scanner workflow still remains.
 
-## License
+---
 
-This project is provided as-is under the [MIT License](LICENSE). Feel free to adapt it for your own use.
+## Future Upgrades
+
+Planned next steps:
+
+* Add a Restocky-ready low-stock endpoint that accepts or reads `live_product_data.csv`.
+* Join Shopify live stock against ROP by SKU.
+* Output `Product, Variant, SKU, Supplier, Department, Brand, RO, Stock, Location`.
+* Add Shopify sales endpoints for 7/30/90/180/365 day ranking.
+* Add controlled stock receiving/write-back once read-only exports are proven safe.

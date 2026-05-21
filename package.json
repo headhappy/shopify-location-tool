@@ -1,13 +1,16 @@
 {
-  "name": "shopify-location-app",
-  "version": "1.0.0",
-  "description": "Embedded Shopify admin app to scan barcodes and update variant location metafields.",
+  "name": "head-happy-stock-control-locations",
+  "version": "1.1.0",
+  "description": "Head Happy Shopify stock control and variant location tool with live inventory CSV/JSON exports.",
   "type": "module",
   "scripts": {
     "start": "node index.js"
   },
   "keywords": [
     "shopify",
+    "inventory",
+    "stock-control",
+    "locations",
     "barcode",
     "metafield",
     "express"

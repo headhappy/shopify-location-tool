@@ -4,14 +4,16 @@
     1. POST /lookup-variant   – finds variant(s) by barcode
     2. POST /update-location  – writes stock.location metafield
 
-    Stock-control additions:
+    Stock-control endpoints:
     3. GET  /health
-    4. GET  /api/locations
-    5. GET  /api/shopify-stock.json
-    6. GET  /api/shopify-stock.csv
+    4. GET  /api/locations                    – needs read_locations
+    5. GET  /api/shopify-stock.json           – total stock fallback, no location split
+    6. GET  /api/shopify-stock.csv            – total stock fallback, no location split
+    7. GET  /api/shopify-stock-by-location.*  – needs read_inventory + read_locations
 
-    These stock endpoints are read-only. They are intended to replace the
-    manual Stocky low-stock export as the live Shopify stock feed for Restocky.
+    The normal stock endpoints use variant.inventoryQuantity so they can work
+    with basic read_products access. Location-level exports are optional and
+    require extra Shopify access scopes.
 */
 
 import express from "express";
@@ -47,12 +49,8 @@ async function shopifyGraph(query, variables = {}) {
   });
 
   const payload = await r.json();
-  if (!r.ok) {
-    throw new Error(`Shopify HTTP ${r.status}: ${JSON.stringify(payload)}`);
-  }
-  if (payload.errors) {
-    throw new Error(JSON.stringify(payload.errors));
-  }
+  if (!r.ok) throw new Error(`Shopify HTTP ${r.status}: ${JSON.stringify(payload)}`);
+  if (payload.errors) throw new Error(JSON.stringify(payload.errors));
   return payload.data;
 }
 
@@ -64,6 +62,13 @@ function rowsToCsv(rows, columns) {
   const header = columns.map(csvEscape).join(",");
   const body = rows.map((row) => columns.map((col) => csvEscape(row[col])).join(",")).join("\n");
   return body ? `${header}\n${body}` : header;
+}
+
+function sendCsv(res, filename, rows, columns) {
+  const csv = rowsToCsv(rows, columns);
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.send("\uFEFF" + csv);
 }
 
 function normalise(value) {
@@ -88,26 +93,52 @@ function buildVariantSearchQuery({ sku, barcode }) {
   return parts.join(" AND ");
 }
 
+function filterStockRows(rows, reqQuery) {
+  const skuContains = reqQuery.skuContains || "";
+  const productContains = reqQuery.productContains || "";
+  const inStockOnly = reqQuery.inStockOnly === "1" || reqQuery.inStockOnly === "true";
+
+  return rows.filter((row) => {
+    if (skuContains && !includesNeedle(row.SKU, skuContains)) return false;
+    if (productContains && !includesNeedle(row.Product, productContains)) return false;
+    if (inStockOnly && Number(row.Available || 0) <= 0) return false;
+    return true;
+  });
+}
+
+const STOCK_COLUMNS = [
+  "Product",
+  "Variant",
+  "SKU",
+  "Barcode",
+  "Vendor",
+  "Tags",
+  "ProductStatus",
+  "Tracked",
+  "Available",
+  "Location",
+  "LocationId",
+  "InventoryItemId",
+  "VariantId",
+  "ProductId",
+  "Price",
+  "Handle",
+];
+
 async function getLocations() {
   const query = `
     query locations($first: Int!) {
       locations(first: $first) {
-        edges {
-          node {
-            id
-            name
-            isActive
-          }
-        }
+        edges { node { id name isActive } }
       }
     }`;
   const data = await shopifyGraph(query, { first: 100 });
   return data.locations.edges.map((edge) => edge.node);
 }
 
-async function getAllVariantStock({ search = "", tag = "", vendor = "", locationId = "", status = "ACTIVE" } = {}) {
+async function getVariantStockTotal({ search = "", tag = "", vendor = "", status = "ACTIVE" } = {}) {
   const query = `
-    query variantStock($first: Int!, $after: String, $query: String) {
+    query variantStockTotal($first: Int!, $after: String, $query: String) {
       productVariants(first: $first, after: $after, query: $query) {
         pageInfo { hasNextPage endCursor }
         edges {
@@ -126,6 +157,71 @@ async function getAllVariantStock({ search = "", tag = "", vendor = "", location
               status
               tags
             }
+          }
+        }
+      }
+    }`;
+
+  const rows = [];
+  let after = null;
+  let page = 0;
+  const variantQuery = search ? search : null;
+
+  do {
+    page += 1;
+    const data = await shopifyGraph(query, { first: 250, after, query: variantQuery });
+    const connection = data.productVariants;
+
+    for (const edge of connection.edges) {
+      const variant = edge.node;
+      const product = variant.product || {};
+      const tags = Array.isArray(product.tags) ? product.tags : [];
+
+      if (status && status !== "ALL" && product.status !== status) continue;
+      if (tag && !tags.some((t) => normalise(t) === normalise(tag))) continue;
+      if (vendor && normalise(product.vendor) !== normalise(vendor)) continue;
+
+      rows.push({
+        Product: product.title || "",
+        Variant: variant.title === "Default Title" ? "" : variant.title || "",
+        SKU: variant.sku || "",
+        Barcode: variant.barcode || "",
+        Vendor: product.vendor || "",
+        Tags: tags.join("|"),
+        ProductStatus: product.status || "",
+        Tracked: "",
+        InventoryItemId: "",
+        VariantId: variant.id || "",
+        ProductId: product.id || "",
+        LocationId: "",
+        Location: "TOTAL",
+        Available: Number(variant.inventoryQuantity ?? 0),
+        Price: variant.price || "",
+        Handle: product.handle || "",
+      });
+    }
+
+    after = connection.pageInfo.hasNextPage ? connection.pageInfo.endCursor : null;
+    if (page > 100) throw new Error("Pagination safety stop hit after 100 pages.");
+  } while (after);
+
+  return rows;
+}
+
+async function getVariantStockByLocation({ search = "", tag = "", vendor = "", locationId = "", status = "ACTIVE" } = {}) {
+  const query = `
+    query variantStockByLocation($first: Int!, $after: String, $query: String) {
+      productVariants(first: $first, after: $after, query: $query) {
+        pageInfo { hasNextPage endCursor }
+        edges {
+          node {
+            id
+            title
+            sku
+            barcode
+            price
+            inventoryQuantity
+            product { id title handle vendor status tags }
             inventoryItem {
               id
               tracked
@@ -164,15 +260,11 @@ async function getAllVariantStock({ search = "", tag = "", vendor = "", location
       if (vendor && normalise(product.vendor) !== normalise(vendor)) continue;
 
       const inventoryLevels = variant.inventoryItem?.inventoryLevels?.edges || [];
-      const levels = inventoryLevels.length
-        ? inventoryLevels.map((levelEdge) => levelEdge.node)
-        : [{ location: { id: "", name: "" }, quantities: [{ name: "available", quantity: variant.inventoryQuantity ?? 0 }] }];
-
-      for (const level of levels) {
+      for (const levelEdge of inventoryLevels) {
+        const level = levelEdge.node;
         const loc = level.location || {};
         if (locationId && loc.id !== locationId) continue;
 
-        const available = availableFromInventoryLevel(level);
         rows.push({
           Product: product.title || "",
           Variant: variant.title === "Default Title" ? "" : variant.title || "",
@@ -187,7 +279,7 @@ async function getAllVariantStock({ search = "", tag = "", vendor = "", location
           ProductId: product.id || "",
           LocationId: loc.id || "",
           Location: loc.name || "",
-          Available: available,
+          Available: availableFromInventoryLevel(level),
           Price: variant.price || "",
           Handle: product.handle || "",
         });
@@ -195,45 +287,11 @@ async function getAllVariantStock({ search = "", tag = "", vendor = "", location
     }
 
     after = connection.pageInfo.hasNextPage ? connection.pageInfo.endCursor : null;
-
-    // Basic protection against accidental runaway requests.
     if (page > 100) throw new Error("Pagination safety stop hit after 100 pages.");
   } while (after);
 
   return rows;
 }
-
-function filterStockRows(rows, reqQuery) {
-  const skuContains = reqQuery.skuContains || "";
-  const productContains = reqQuery.productContains || "";
-  const inStockOnly = reqQuery.inStockOnly === "1" || reqQuery.inStockOnly === "true";
-
-  return rows.filter((row) => {
-    if (skuContains && !includesNeedle(row.SKU, skuContains)) return false;
-    if (productContains && !includesNeedle(row.Product, productContains)) return false;
-    if (inStockOnly && Number(row.Available || 0) <= 0) return false;
-    return true;
-  });
-}
-
-const STOCK_COLUMNS = [
-  "Product",
-  "Variant",
-  "SKU",
-  "Barcode",
-  "Vendor",
-  "Tags",
-  "ProductStatus",
-  "Tracked",
-  "Available",
-  "Location",
-  "LocationId",
-  "InventoryItemId",
-  "VariantId",
-  "ProductId",
-  "Price",
-  "Handle",
-];
 
 /* ---------- health ---------- */
 app.get("/health", (req, res) => {
@@ -246,21 +304,71 @@ app.get("/health", (req, res) => {
   });
 });
 
-/* ---------- locations ---------- */
+/* ---------- locations: requires read_locations ---------- */
 app.get("/api/locations", async (req, res) => {
   try {
     const locations = await getLocations();
     res.json({ locations });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Location lookup failed", detail: err.message });
+    res.status(500).json({
+      error: "Location lookup failed",
+      detail: err.message,
+      fix: "Add read_locations to the Shopify custom app scopes, reinstall the app, then update SHOPIFY_ACCESS_TOKEN in Render.",
+    });
   }
 });
 
-/* ---------- live Shopify stock JSON ---------- */
+/* ---------- live Shopify total stock JSON: read_products fallback ---------- */
 app.get("/api/shopify-stock.json", async (req, res) => {
   try {
-    const rows = await getAllVariantStock({
+    const rows = await getVariantStockTotal({
+      search: req.query.search || "",
+      tag: req.query.tag || "",
+      vendor: req.query.vendor || "",
+      status: req.query.status || "ACTIVE",
+    });
+    const filtered = filterStockRows(rows, req.query);
+    res.json({
+      meta: {
+        app: "Head Happy Stock Control + Locations",
+        mode: "TOTAL_INVENTORY_QUANTITY",
+        shop: SHOP,
+        apiVersion: API,
+        generatedAt: new Date().toISOString(),
+        rowCount: filtered.length,
+        filters: req.query,
+        note: "This uses variant.inventoryQuantity and does not split by Shopify location.",
+      },
+      rows: filtered,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Stock export failed", detail: err.message });
+  }
+});
+
+/* ---------- live Shopify total stock CSV: read_products fallback ---------- */
+app.get("/api/shopify-stock.csv", async (req, res) => {
+  try {
+    const rows = await getVariantStockTotal({
+      search: req.query.search || "",
+      tag: req.query.tag || "",
+      vendor: req.query.vendor || "",
+      status: req.query.status || "ACTIVE",
+    });
+    const filtered = filterStockRows(rows, req.query);
+    sendCsv(res, "shopify-stock.csv", filtered, STOCK_COLUMNS);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Stock CSV export failed", detail: err.message });
+  }
+});
+
+/* ---------- location-level stock JSON: requires read_inventory ---------- */
+app.get("/api/shopify-stock-by-location.json", async (req, res) => {
+  try {
+    const rows = await getVariantStockByLocation({
       search: req.query.search || "",
       tag: req.query.tag || "",
       vendor: req.query.vendor || "",
@@ -271,6 +379,7 @@ app.get("/api/shopify-stock.json", async (req, res) => {
     res.json({
       meta: {
         app: "Head Happy Stock Control + Locations",
+        mode: "BY_LOCATION",
         shop: SHOP,
         apiVersion: API,
         generatedAt: new Date().toISOString(),
@@ -281,14 +390,18 @@ app.get("/api/shopify-stock.json", async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Stock export failed", detail: err.message });
+    res.status(500).json({
+      error: "Location-level stock export failed",
+      detail: err.message,
+      fix: "Add read_inventory and read_locations to the Shopify custom app scopes, reinstall the app, then update SHOPIFY_ACCESS_TOKEN in Render.",
+    });
   }
 });
 
-/* ---------- live Shopify stock CSV ---------- */
-app.get("/api/shopify-stock.csv", async (req, res) => {
+/* ---------- location-level stock CSV: requires read_inventory ---------- */
+app.get("/api/shopify-stock-by-location.csv", async (req, res) => {
   try {
-    const rows = await getAllVariantStock({
+    const rows = await getVariantStockByLocation({
       search: req.query.search || "",
       tag: req.query.tag || "",
       vendor: req.query.vendor || "",
@@ -296,13 +409,14 @@ app.get("/api/shopify-stock.csv", async (req, res) => {
       status: req.query.status || "ACTIVE",
     });
     const filtered = filterStockRows(rows, req.query);
-    const csv = rowsToCsv(filtered, STOCK_COLUMNS);
-    res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader("Content-Disposition", 'attachment; filename="shopify-stock.csv"');
-    res.send("\uFEFF" + csv);
+    sendCsv(res, "shopify-stock-by-location.csv", filtered, STOCK_COLUMNS);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Stock CSV export failed", detail: err.message });
+    res.status(500).json({
+      error: "Location-level stock CSV export failed",
+      detail: err.message,
+      fix: "Add read_inventory and read_locations to the Shopify custom app scopes, reinstall the app, then update SHOPIFY_ACCESS_TOKEN in Render.",
+    });
   }
 });
 

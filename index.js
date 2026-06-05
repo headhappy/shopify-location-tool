@@ -28,6 +28,7 @@
 import express from "express";
 import fetch from "node-fetch";
 import dotenv from "dotenv";
+import { graphWithDevDashboardAuth } from "./dev-dashboard-auth.js";
 
 dotenv.config();
 
@@ -362,7 +363,7 @@ async function fetchOrdersSince(sinceIso) {
 
   do {
     page += 1;
-    const data = await shopifyGraph(query, {
+    const data = await graphWithDevDashboardAuth(API, query, {
       first: 100,
       after,
       query: `created_at:>=${sinceIso}`,
@@ -434,6 +435,21 @@ const SALES_COLUMNS = [
   "QtySold_90d",
   "QtySold_180d",
 ];
+
+function salesErrorPayload(err) {
+  const detail = err?.message || String(err);
+  const payload = {
+    error: "Sales export failed",
+    detail,
+  };
+
+  if (detail.includes("ACCESS_DENIED") || detail.includes("Access denied for orders field")) {
+    payload.fix =
+      "The Head Happy Sales Sync app needs read_orders approved on the installed store, or the app/token source still lacks that scope.";
+  }
+
+  return payload;
+}
 
 /* ---------- health ---------- */
 app.get("/health", (req, res) => {
@@ -594,10 +610,7 @@ app.get("/api/shopify-sales.json", async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({
-      error: "Sales export failed",
-      detail: err.message,
-    });
+    res.status(500).json(salesErrorPayload(err));
   }
 });
 
@@ -612,10 +625,7 @@ app.get("/api/shopify-sales.csv", async (req, res) => {
     sendCsv(res, "shopify-sales-short.csv", rows, SALES_COLUMNS);
   } catch (err) {
     console.error(err);
-    res.status(500).json({
-      error: "Sales CSV export failed",
-      detail: err.message,
-    });
+    res.status(500).json(salesErrorPayload(err));
   }
 });
 

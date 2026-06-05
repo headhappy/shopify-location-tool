@@ -232,6 +232,12 @@ function isoDaysAgo(days) {
   return d.toISOString();
 }
 
+function clampSalesDays(value) {
+  const n = Number(value || 180);
+  if (!Number.isFinite(n)) return 180;
+  return Math.max(1, Math.min(365, Math.round(n)));
+}
+
 async function fetchOrdersSince(sinceIso) {
   const query = `
     query ordersSince($first: Int!, $after: String, $query: String!) {
@@ -240,7 +246,7 @@ async function fetchOrdersSince(sinceIso) {
         edges {
           node {
             id createdAt
-            lineItems(first: 250) { edges { node { quantity variant { sku } } } }
+            lineItems(first: 250) { edges { node { sku quantity variant { sku } } } }
           }
         }
       }
@@ -259,7 +265,7 @@ async function fetchOrdersSince(sinceIso) {
     const connection = data.orders;
     for (const edge of connection.edges) allOrders.push(edge.node);
     after = connection.pageInfo.hasNextPage ? connection.pageInfo.endCursor : null;
-    if (page > 200) throw new Error("Orders pagination safety stop hit after 200 pages.");
+    if (page > 300) throw new Error("Orders pagination safety stop hit after 300 pages.");
   } while (after);
   return allOrders;
 }
@@ -269,34 +275,48 @@ function addQty(map, sku, qty) {
   map[sku] = (map[sku] || 0) + qty;
 }
 
-function buildShortSalesMaps(orders) {
+function buildSalesMaps(orders) {
   const now = new Date();
-  const sales1d = {};
-  const sales7 = {};
-  const sales30 = {};
+  const maps = {
+    sales1d: {},
+    sales7: {},
+    sales30: {},
+    sales90: {},
+    sales180: {},
+  };
+
   for (const order of orders) {
     const ageDays = (now.getTime() - new Date(order.createdAt).getTime()) / 86400000;
     for (const edge of order.lineItems?.edges || []) {
-      const sku = String(edge.node?.variant?.sku || "").trim();
-      const qty = Number(edge.node?.quantity || 0);
+      const item = edge.node || {};
+      const sku = String(item.variant?.sku || item.sku || "").trim();
+      const qty = Number(item.quantity || 0);
       if (!sku || !qty) continue;
-      if (ageDays <= 30) addQty(sales30, sku, qty);
-      if (ageDays <= 7) addQty(sales7, sku, qty);
-      if (ageDays <= 1) addQty(sales1d, sku, qty);
+      if (ageDays <= 180) addQty(maps.sales180, sku, qty);
+      if (ageDays <= 90) addQty(maps.sales90, sku, qty);
+      if (ageDays <= 30) addQty(maps.sales30, sku, qty);
+      if (ageDays <= 7) addQty(maps.sales7, sku, qty);
+      if (ageDays <= 1) addQty(maps.sales1d, sku, qty);
     }
   }
-  return { sales1d, sales7, sales30 };
+  return maps;
 }
 
 function salesMapsToRows(maps) {
-  const skuSet = new Set([...Object.keys(maps.sales1d), ...Object.keys(maps.sales7), ...Object.keys(maps.sales30)]);
+  const skuSet = new Set([
+    ...Object.keys(maps.sales1d || {}),
+    ...Object.keys(maps.sales7 || {}),
+    ...Object.keys(maps.sales30 || {}),
+    ...Object.keys(maps.sales90 || {}),
+    ...Object.keys(maps.sales180 || {}),
+  ]);
   return Array.from(skuSet).sort((a, b) => a.localeCompare(b)).map(sku => ({
     SKU: sku,
     QtySold_1d: maps.sales1d[sku] || 0,
     QtySold_7d: maps.sales7[sku] || 0,
     QtySold_30d: maps.sales30[sku] || 0,
-    QtySold_90d: "",
-    QtySold_180d: "",
+    QtySold_90d: maps.sales90[sku] || 0,
+    QtySold_180d: maps.sales180[sku] || 0,
   }));
 }
 
@@ -304,9 +324,38 @@ function salesErrorPayload(err) {
   const detail = err?.message || String(err);
   const payload = { error: "Sales export failed", detail };
   if (detail.includes("ACCESS_DENIED") || detail.includes("Access denied for orders field")) {
-    payload.fix = "The Head Happy Sales Sync app needs read_orders approved on the installed store, or the token source still lacks that scope.";
+    payload.fix = "The Head Happy Sales Sync app needs read_all_orders approved/effective for 90/180 day sales. Until then, use manual 90/180 exports.";
   }
   return payload;
+}
+
+async function buildSalesPayload(days = 180) {
+  const maxDays = clampSalesDays(days);
+  const sinceIso = isoDaysAgo(maxDays);
+  const orders = await fetchOrdersSince(sinceIso);
+  const maps = buildSalesMaps(orders);
+  const rows = salesMapsToRows(maps);
+  const availableWindows = ["1d", "7d", "30d"];
+  if (maxDays >= 90) availableWindows.push("90d");
+  if (maxDays >= 180) availableWindows.push("180d");
+  return {
+    meta: {
+      app: "Head Happy Stock Control + Locations",
+      mode: maxDays >= 180 ? "LONG_SALES_WINDOWS" : "SALES_WINDOWS",
+      shop: SHOP,
+      apiVersion: API,
+      generatedAt: new Date().toISOString(),
+      requestedDays: maxDays,
+      since: sinceIso,
+      orderCount: orders.length,
+      rowCount: rows.length,
+      availableWindows,
+      unavailableWindows: ["90d", "180d"].filter(w => !availableWindows.includes(w)),
+      note: maxDays >= 180 ? "1/7/30/90/180 generated from Shopify orders API." : "Short windows generated from Shopify orders API.",
+    },
+    maps,
+    rows,
+  };
 }
 
 app.get("/health", (req, res) => {
@@ -316,6 +365,7 @@ app.get("/health", (req, res) => {
     shop: SHOP,
     apiVersion: API,
     cors: true,
+    salesDefaultDays: 180,
     time: new Date().toISOString(),
   });
 });
@@ -398,14 +448,7 @@ app.get("/api/shopify-stock-by-location.csv", async (req, res) => {
 
 app.get("/api/shopify-sales.json", async (req, res) => {
   try {
-    const orders = await fetchOrdersSince(isoDaysAgo(30));
-    const maps = buildShortSalesMaps(orders);
-    const rows = salesMapsToRows(maps);
-    res.json({
-      meta: { app: "Head Happy Stock Control + Locations", mode: "SHORT_SALES_WINDOWS", shop: SHOP, apiVersion: API, generatedAt: new Date().toISOString(), orderCount: orders.length, rowCount: rows.length, availableWindows: ["1d", "7d", "30d"], unavailableWindows: ["90d", "180d"], note: "90d and 180d are not returned here yet. Upload 90/180 manually for now." },
-      maps: { sales1d: maps.sales1d, sales7: maps.sales7, sales30: maps.sales30, sales90: null, sales180: null },
-      rows,
-    });
+    res.json(await buildSalesPayload(req.query.days || 180));
   } catch (err) {
     console.error(err);
     res.status(500).json(salesErrorPayload(err));
@@ -414,9 +457,8 @@ app.get("/api/shopify-sales.json", async (req, res) => {
 
 app.get("/api/shopify-sales.csv", async (req, res) => {
   try {
-    const orders = await fetchOrdersSince(isoDaysAgo(30));
-    const rows = salesMapsToRows(buildShortSalesMaps(orders));
-    sendCsv(res, "shopify-sales-short.csv", rows, SALES_COLUMNS);
+    const payload = await buildSalesPayload(req.query.days || 180);
+    sendCsv(res, `shopify-sales-${payload.meta.requestedDays}d.csv`, payload.rows, SALES_COLUMNS);
   } catch (err) {
     console.error(err);
     res.status(500).json(salesErrorPayload(err));

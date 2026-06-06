@@ -7,16 +7,20 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const SHOP = process.env.SHOPIFY_SHOP;
-const TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
+
+const SHOP = process.env.SHOPIFY_SHOP; // legacy/location-token shop domain
+const TOKEN = process.env.SHOPIFY_ACCESS_TOKEN; // legacy/location-token access token
 const API = process.env.SHOPIFY_API_VERSION || "2024-07";
+
+// ShopifyQL is used for sales velocity because the Orders API can be limited to ~60 days.
+// 2025-10+ exposes shopifyqlQuery in Admin GraphQL.
+const SHOPIFYQL_API = process.env.SHOPIFYQL_API_VERSION || "2025-10";
 
 if (!SHOP || !TOKEN) {
   console.error("❌ Set SHOPIFY_SHOP & SHOPIFY_ACCESS_TOKEN in Render env vars.");
   process.exit(1);
 }
 
-// Allow the local Head Happy HTML tools to fetch the API from file://, localhost, or Render.
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
@@ -220,86 +224,19 @@ async function getVariantStockByLocation({ search = "", tag = "", vendor = "", l
   return rows;
 }
 
-function startOfDayUtc(date = new Date()) {
-  const d = new Date(date);
-  d.setUTCHours(0, 0, 0, 0);
-  return d;
-}
-
-function isoDaysAgo(days) {
-  const d = startOfDayUtc();
-  d.setUTCDate(d.getUTCDate() - days);
-  return d.toISOString();
-}
-
 function clampSalesDays(value) {
   const n = Number(value || 180);
   if (!Number.isFinite(n)) return 180;
   return Math.max(1, Math.min(365, Math.round(n)));
 }
 
-async function fetchOrdersSince(sinceIso) {
-  const query = `
-    query ordersSince($first: Int!, $after: String, $query: String!) {
-      orders(first: $first, after: $after, query: $query, sortKey: CREATED_AT, reverse: true) {
-        pageInfo { hasNextPage endCursor }
-        edges {
-          node {
-            id createdAt
-            lineItems(first: 250) { edges { node { sku quantity variant { sku } } } }
-          }
-        }
-      }
-    }`;
-
-  const allOrders = [];
-  let after = null;
-  let page = 0;
-  do {
-    page += 1;
-    const data = await graphWithDevDashboardAuth(API, query, {
-      first: 100,
-      after,
-      query: `created_at:>=${sinceIso}`,
-    });
-    const connection = data.orders;
-    for (const edge of connection.edges) allOrders.push(edge.node);
-    after = connection.pageInfo.hasNextPage ? connection.pageInfo.endCursor : null;
-    if (page > 300) throw new Error("Orders pagination safety stop hit after 300 pages.");
-  } while (after);
-  return allOrders;
-}
-
 function addQty(map, sku, qty) {
-  if (!sku) return;
+  if (!sku || !qty) return;
   map[sku] = (map[sku] || 0) + qty;
 }
 
-function buildSalesMaps(orders) {
-  const now = new Date();
-  const maps = {
-    sales1d: {},
-    sales7: {},
-    sales30: {},
-    sales90: {},
-    sales180: {},
-  };
-
-  for (const order of orders) {
-    const ageDays = (now.getTime() - new Date(order.createdAt).getTime()) / 86400000;
-    for (const edge of order.lineItems?.edges || []) {
-      const item = edge.node || {};
-      const sku = String(item.variant?.sku || item.sku || "").trim();
-      const qty = Number(item.quantity || 0);
-      if (!sku || !qty) continue;
-      if (ageDays <= 180) addQty(maps.sales180, sku, qty);
-      if (ageDays <= 90) addQty(maps.sales90, sku, qty);
-      if (ageDays <= 30) addQty(maps.sales30, sku, qty);
-      if (ageDays <= 7) addQty(maps.sales7, sku, qty);
-      if (ageDays <= 1) addQty(maps.sales1d, sku, qty);
-    }
-  }
-  return maps;
+function emptySalesMaps() {
+  return { sales1d: {}, sales7: {}, sales30: {}, sales90: {}, sales180: {} };
 }
 
 function salesMapsToRows(maps) {
@@ -320,43 +257,162 @@ function salesMapsToRows(maps) {
   }));
 }
 
+function sumMap(map) {
+  return Object.values(map || {}).reduce((sum, value) => sum + Number(value || 0), 0);
+}
+
 function salesErrorPayload(err) {
   const detail = err?.message || String(err);
   const payload = { error: "Sales export failed", detail };
-  if (detail.includes("ACCESS_DENIED") || detail.includes("Access denied for orders field")) {
-    payload.fix = "The Head Happy Sales Sync app needs read_all_orders approved/effective for 90/180 day sales. Until then, use manual 90/180 exports.";
+  if (detail.includes("shopifyqlQuery")) {
+    payload.fix = "Set SHOPIFYQL_API_VERSION=2025-10 or later, and make sure the Dev Dashboard app has read_reports approved.";
+  } else if (detail.includes("ACCESS_DENIED") || detail.includes("Access denied")) {
+    payload.fix = "The Dev Dashboard app needs read_reports approved for ShopifyQL sales analytics.";
   }
   return payload;
 }
 
+/* ---------- ShopifyQL sales source ---------- */
+
+async function runShopifyQL(shopifyql) {
+  const query = `
+    query ShopifyQL($query: String!) {
+      shopifyqlQuery(query: $query) {
+        tableData {
+          columns { name dataType displayName }
+          rows
+        }
+        parseErrors
+      }
+    }`;
+
+  const data = await graphWithDevDashboardAuth(SHOPIFYQL_API, query, { query: shopifyql });
+  const result = data?.shopifyqlQuery;
+  const parseErrors = result?.parseErrors || [];
+  if (Array.isArray(parseErrors) && parseErrors.length) {
+    throw new Error(`ShopifyQL parse error: ${JSON.stringify(parseErrors)}`);
+  }
+  if (!result?.tableData) {
+    throw new Error(`ShopifyQL returned no tableData for query: ${shopifyql}`);
+  }
+  return result.tableData;
+}
+
+function rowCell(row, columns, name) {
+  if (Array.isArray(row)) {
+    const idx = columns.findIndex(col => col.name === name || col.displayName === name);
+    return idx >= 0 ? row[idx] : undefined;
+  }
+  if (row && typeof row === "object") {
+    return row[name] ?? row[columns.find(col => col.name === name)?.displayName];
+  }
+  return undefined;
+}
+
+async function fetchShopifyQLSoldMap(days) {
+  const limit = 2500;
+  let offset = 0;
+  let pages = 0;
+  let rowsSeen = 0;
+  const map = {};
+  let stoppedAtZero = false;
+
+  while (true) {
+    const shopifyql = [
+      "FROM inventory",
+      "SHOW inventory_units_sold",
+      "GROUP BY product_variant_sku",
+      `SINCE -${days}d`,
+      "UNTIL today",
+      "ORDER BY inventory_units_sold DESC",
+      `LIMIT ${limit}`,
+      `OFFSET ${offset}`,
+    ].join(" ");
+
+    const table = await runShopifyQL(shopifyql);
+    const columns = table.columns || [];
+    const rows = table.rows || [];
+    pages += 1;
+    rowsSeen += rows.length;
+
+    let lastQty = 0;
+    for (const row of rows) {
+      const sku = String(rowCell(row, columns, "product_variant_sku") || "").trim();
+      const qty = Number(rowCell(row, columns, "inventory_units_sold") || 0);
+      lastQty = qty;
+      if (!sku || qty <= 0) continue;
+      map[sku] = qty;
+    }
+
+    if (rows.length < limit || lastQty <= 0) {
+      stoppedAtZero = lastQty <= 0;
+      break;
+    }
+
+    offset += limit;
+    if (pages >= 10) {
+      throw new Error(`ShopifyQL pagination safety stop hit for ${days}d sales`);
+    }
+  }
+
+  return { map, pages, rowsSeen, totalQty: sumMap(map), stoppedAtZero };
+}
+
 async function buildSalesPayload(days = 180) {
-  const maxDays = clampSalesDays(days);
-  const sinceIso = isoDaysAgo(maxDays);
-  const orders = await fetchOrdersSince(sinceIso);
-  const maps = buildSalesMaps(orders);
+  const requestedDays = clampSalesDays(days);
+  const windows = [1, 7, 30];
+  if (requestedDays >= 90) windows.push(90);
+  if (requestedDays >= 180) windows.push(180);
+
+  const maps = emptySalesMaps();
+  const diagnostics = {};
+
+  for (const windowDays of windows) {
+    const key = windowDays === 1 ? "sales1d" : `sales${windowDays}`;
+    const result = await fetchShopifyQLSoldMap(windowDays);
+    maps[key] = result.map;
+    diagnostics[key] = {
+      days: windowDays,
+      skuCount: Object.keys(result.map).length,
+      totalQty: result.totalQty,
+      pages: result.pages,
+      rowsSeen: result.rowsSeen,
+      stoppedAtZero: result.stoppedAtZero,
+    };
+  }
+
   const rows = salesMapsToRows(maps);
-  const availableWindows = ["1d", "7d", "30d"];
-  if (maxDays >= 90) availableWindows.push("90d");
-  if (maxDays >= 180) availableWindows.push("180d");
+  const availableWindows = windows.map(w => (w === 1 ? "1d" : `${w}d`));
+
   return {
     meta: {
       app: "Head Happy Stock Control + Locations",
-      mode: maxDays >= 180 ? "LONG_SALES_WINDOWS" : "SALES_WINDOWS",
+      mode: requestedDays >= 180 ? "SHOPIFYQL_LONG_SALES_WINDOWS" : "SHOPIFYQL_SALES_WINDOWS",
+      source: "shopifyql.inventory.inventory_units_sold",
       shop: SHOP,
       apiVersion: API,
+      shopifyqlApiVersion: SHOPIFYQL_API,
       generatedAt: new Date().toISOString(),
-      requestedDays: maxDays,
-      since: sinceIso,
-      orderCount: orders.length,
+      requestedDays,
       rowCount: rows.length,
       availableWindows,
       unavailableWindows: ["90d", "180d"].filter(w => !availableWindows.includes(w)),
-      note: maxDays >= 180 ? "1/7/30/90/180 generated from Shopify orders API." : "Short windows generated from Shopify orders API.",
+      totals: {
+        QtySold_1d: sumMap(maps.sales1d),
+        QtySold_7d: sumMap(maps.sales7),
+        QtySold_30d: sumMap(maps.sales30),
+        QtySold_90d: sumMap(maps.sales90),
+        QtySold_180d: sumMap(maps.sales180),
+      },
+      diagnostics,
+      note: "Sales generated from ShopifyQL inventory_units_sold by SKU. This avoids the Orders API 60-day order-history clamp.",
     },
     maps,
     rows,
   };
 }
+
+/* ---------- routes ---------- */
 
 app.get("/health", (req, res) => {
   res.json({
@@ -364,8 +420,9 @@ app.get("/health", (req, res) => {
     app: "Head Happy Stock Control + Locations",
     shop: SHOP,
     apiVersion: API,
+    shopifyqlApiVersion: SHOPIFYQL_API,
+    salesSource: "shopifyql.inventory.inventory_units_sold",
     cors: true,
-    salesDefaultDays: 180,
     time: new Date().toISOString(),
   });
 });

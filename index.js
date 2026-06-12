@@ -96,7 +96,7 @@ function filterStockRows(rows, query) {
 
 const STOCK_COLUMNS = [
   "Product", "Variant", "SKU", "Barcode", "Vendor", "Tags", "ProductStatus", "Tracked",
-  "Available", "Location", "LocationId", "InventoryItemId", "VariantId", "ProductId", "Price", "Handle",
+  "Available", "ShelfLocation", "LOC2", "Location", "LocationId", "InventoryItemId", "VariantId", "ProductId", "Price", "Handle",
 ];
 
 const SALES_COLUMNS = ["SKU", "QtySold_1d", "QtySold_7d", "QtySold_30d", "QtySold_90d", "QtySold_180d"];
@@ -117,7 +117,11 @@ async function getVariantStockTotal({ search = "", tag = "", vendor = "", status
         edges {
           node {
             id title sku barcode price inventoryQuantity
-            product { id title handle vendor status tags }
+            locationMetafield: metafield(namespace: "stock", key: "location") { value }
+            product {
+              id title handle vendor status tags
+              loc2Metafield: metafield(namespace: "custom", key: "location") { value }
+            }
           }
         }
       }
@@ -147,6 +151,8 @@ async function getVariantStockTotal({ search = "", tag = "", vendor = "", status
         ProductStatus: product.status || "",
         Tracked: "",
         Available: Number(variant.inventoryQuantity ?? 0),
+        ShelfLocation: variant.locationMetafield?.value || "",
+        LOC2: product.loc2Metafield?.value || "",
         Location: "TOTAL",
         LocationId: "",
         InventoryItemId: "",
@@ -170,7 +176,11 @@ async function getVariantStockByLocation({ search = "", tag = "", vendor = "", l
         edges {
           node {
             id title sku barcode price inventoryQuantity
-            product { id title handle vendor status tags }
+            locationMetafield: metafield(namespace: "stock", key: "location") { value }
+            product {
+              id title handle vendor status tags
+              loc2Metafield: metafield(namespace: "custom", key: "location") { value }
+            }
             inventoryItem {
               id tracked
               inventoryLevels(first: 50) {
@@ -210,6 +220,8 @@ async function getVariantStockByLocation({ search = "", tag = "", vendor = "", l
           ProductStatus: product.status || "",
           Tracked: variant.inventoryItem?.tracked ? "TRUE" : "FALSE",
           Available: availableFromInventoryLevel(level),
+          ShelfLocation: variant.locationMetafield?.value || "",
+          LOC2: product.loc2Metafield?.value || "",
           Location: loc.name || "",
           LocationId: loc.id || "",
           InventoryItemId: variant.inventoryItem?.id || "",
@@ -350,11 +362,8 @@ async function fetchShopifyQLSoldMap(days) {
       stoppedAtZero = lastQty <= 0;
       break;
     }
-
     offset += limit;
-    if (pages >= 10) {
-      throw new Error(`ShopifyQL pagination safety stop hit for ${days}d sales`);
-    }
+    if (pages >= 10) throw new Error(`ShopifyQL pagination safety stop hit for ${days}d sales`);
   }
 
   return { map, pages, rowsSeen, totalQty: sumMap(map), stoppedAtZero };
@@ -393,18 +402,10 @@ async function fetchShopifyQLYesterdayNetSales() {
       const sku = String(rowCell(row, columns, "product_variant_sku") || "").trim();
       const price = rowCell(row, columns, "product_variant_price");
       const qty = Number(rowCell(row, columns, "net_items_sold") || 0);
-
-      // WITH TOTALS can produce a summary row without a SKU. Skip it and calculate totals from SKU rows.
       if (!sku || qty <= 0) continue;
 
       addQty(map, sku, qty);
-
-      const rawRow = {
-        SKU: sku,
-        Product: productTitle,
-        Price: price ?? "",
-        Sold: qty,
-      };
+      const rawRow = { SKU: sku, Product: productTitle, Price: price ?? "", Sold: qty };
       rawRows.push(rawRow);
 
       const existing = aggregatedBySku.get(sku);
@@ -418,11 +419,8 @@ async function fetchShopifyQLYesterdayNetSales() {
     }
 
     if (rows.length < limit) break;
-
     offset += limit;
-    if (pages >= 10) {
-      throw new Error("ShopifyQL pagination safety stop hit for yesterday net sales");
-    }
+    if (pages >= 10) throw new Error("ShopifyQL pagination safety stop hit for yesterday net sales");
   }
 
   const rows = Array.from(aggregatedBySku.values()).sort((a, b) => String(a.SKU).localeCompare(String(b.SKU)));
@@ -442,10 +440,7 @@ async function fetchShopifyQLYesterdayNetSales() {
       rowCount: rows.length,
       rawRowCount: rawRows.length,
       totalQty: sumMap(map),
-      diagnostics: {
-        pages,
-        rowsSeen,
-      },
+      diagnostics: { pages, rowsSeen },
       note: "This endpoint is for the daily printout. It matches Shopify Analytics previous-day net item sales, not the rolling inventory_units_sold velocity windows.",
     },
     map,
@@ -462,7 +457,6 @@ async function buildSalesPayload(days = 180) {
 
   const maps = emptySalesMaps();
   const diagnostics = {};
-
   for (const windowDays of windows) {
     const key = windowDays === 1 ? "sales1d" : `sales${windowDays}`;
     const result = await fetchShopifyQLSoldMap(windowDays);
@@ -479,7 +473,6 @@ async function buildSalesPayload(days = 180) {
 
   const rows = salesMapsToRows(maps);
   const availableWindows = windows.map(w => (w === 1 ? "1d" : `${w}d`));
-
   return {
     meta: {
       app: "Head Happy Stock Control + Locations",
@@ -519,6 +512,10 @@ app.get("/health", (req, res) => {
     shopifyqlApiVersion: SHOPIFYQL_API,
     salesSource: "shopifyql.inventory.inventory_units_sold",
     yesterdaySalesEndpoint: "/api/shopify-yesterday-sales.json",
+    stockLocationFields: {
+      variantShelfLocation: "ShelfLocation from variant metafield stock.location",
+      productStockroomLocation: "LOC2 from product metafield custom.location",
+    },
     cors: true,
     time: new Date().toISOString(),
   });
@@ -543,7 +540,15 @@ app.get("/api/shopify-stock.json", async (req, res) => {
     });
     const filtered = filterStockRows(rows, req.query);
     res.json({
-      meta: { app: "Head Happy Stock Control + Locations", mode: "TOTAL_INVENTORY_QUANTITY", shop: SHOP, apiVersion: API, generatedAt: new Date().toISOString(), rowCount: filtered.length, filters: req.query },
+      meta: {
+        app: "Head Happy Stock Control + Locations",
+        mode: "TOTAL_INVENTORY_QUANTITY",
+        shop: SHOP,
+        apiVersion: API,
+        generatedAt: new Date().toISOString(),
+        rowCount: filtered.length,
+        filters: req.query,
+      },
       rows: filtered,
     });
   } catch (err) {
@@ -577,7 +582,18 @@ app.get("/api/shopify-stock-by-location.json", async (req, res) => {
       status: req.query.status || "ACTIVE",
     });
     const filtered = filterStockRows(rows, req.query);
-    res.json({ meta: { app: "Head Happy Stock Control + Locations", mode: "BY_LOCATION", shop: SHOP, apiVersion: API, generatedAt: new Date().toISOString(), rowCount: filtered.length, filters: req.query }, rows: filtered });
+    res.json({
+      meta: {
+        app: "Head Happy Stock Control + Locations",
+        mode: "BY_LOCATION",
+        shop: SHOP,
+        apiVersion: API,
+        generatedAt: new Date().toISOString(),
+        rowCount: filtered.length,
+        filters: req.query,
+      },
+      rows: filtered,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Location-level stock export failed", detail: err.message });
@@ -651,21 +667,42 @@ app.get("/api/shopify-yesterday-sales-raw.csv", async (req, res) => {
 app.post("/lookup-variant", async (req, res) => {
   const { barcode } = req.body;
   if (!barcode) return res.status(400).json({ error: "Barcode required" });
+
   try {
     const query = `
       query ($q: String!) {
         productVariants(first: 20, query: $q) {
-          edges { node { id title barcode product { title } metafield(namespace: "stock", key: "location") { value } } }
+          edges {
+            node {
+              id
+              title
+              barcode
+              product { title }
+              metafield(namespace: "stock", key: "location") { value }
+            }
+          }
         }
       }`;
     const data = await shopifyGraph(query, { q: buildVariantSearchQuery({ barcode }) });
     const hits = data.productVariants.edges.map(e => e.node);
     if (!hits.length) return res.status(404).json({ error: "No variant matches" });
+
     if (hits.length === 1) {
       const v = hits[0];
-      return res.json({ variant: { id: v.id }, productTitle: v.product.title, currentLocation: v.metafield?.value || "" });
+      return res.json({
+        variant: { id: v.id },
+        productTitle: v.product.title,
+        currentLocation: v.metafield?.value || "",
+      });
     }
-    res.json({ variants: hits.map(v => ({ id: v.id, title: `${v.product.title} – ${v.title}`, currentLocation: v.metafield?.value || "" })) });
+
+    res.json({
+      variants: hits.map(v => ({
+        id: v.id,
+        title: `${v.product.title} – ${v.title}`,
+        currentLocation: v.metafield?.value || "",
+      })),
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Lookup failed", detail: err.message });
@@ -674,11 +711,20 @@ app.post("/lookup-variant", async (req, res) => {
 
 app.post("/update-location", async (req, res) => {
   const { variantId, locationValue } = req.body;
-  if (!variantId || locationValue === undefined) return res.status(400).json({ error: "variantId & locationValue required" });
+  if (!variantId || locationValue === undefined) {
+    return res.status(400).json({ error: "variantId & locationValue required" });
+  }
+
   try {
     const mutation = `
       mutation setLoc($id: ID!, $val: String!) {
-        metafieldsSet(metafields: [{ ownerId: $id, namespace: "stock", key: "location", type: "single_line_text_field", value: $val }]) {
+        metafieldsSet(metafields: [{
+          ownerId: $id,
+          namespace: "stock",
+          key: "location",
+          type: "single_line_text_field",
+          value: $val
+        }]) {
           userErrors { field message }
         }
       }`;

@@ -516,6 +516,11 @@ app.get("/health", (req, res) => {
       variantShelfLocation: "ShelfLocation from variant metafield stock.location",
       productStockroomLocation: "LOC2 from product metafield custom.location",
     },
+    updaterFeatures: {
+      location: "Variant metafield stock.location",
+      loc2: "Product metafield custom.location",
+      loc2Endpoint: "/update-loc2",
+    },
     cors: true,
     time: new Date().toISOString(),
   });
@@ -676,9 +681,14 @@ app.post("/lookup-variant", async (req, res) => {
             node {
               id
               title
+              sku
               barcode
-              product { title }
-              metafield(namespace: "stock", key: "location") { value }
+              locationMetafield: metafield(namespace: "stock", key: "location") { value }
+              product {
+                id
+                title
+                loc2Metafield: metafield(namespace: "custom", key: "location") { value }
+              }
             }
           }
         }
@@ -690,17 +700,22 @@ app.post("/lookup-variant", async (req, res) => {
     if (hits.length === 1) {
       const v = hits[0];
       return res.json({
-        variant: { id: v.id },
-        productTitle: v.product.title,
-        currentLocation: v.metafield?.value || "",
+        variant: { id: v.id, sku: v.sku || "", title: v.title || "" },
+        product: { id: v.product?.id || "" },
+        productTitle: v.product?.title || "",
+        currentLocation: v.locationMetafield?.value || "",
+        currentLoc2: v.product?.loc2Metafield?.value || "",
       });
     }
 
     res.json({
       variants: hits.map(v => ({
         id: v.id,
-        title: `${v.product.title} – ${v.title}`,
-        currentLocation: v.metafield?.value || "",
+        productId: v.product?.id || "",
+        sku: v.sku || "",
+        title: `${v.product?.title || ""} – ${v.title || ""}`,
+        currentLocation: v.locationMetafield?.value || "",
+        currentLoc2: v.product?.loc2Metafield?.value || "",
       })),
     });
   } catch (err) {
@@ -734,6 +749,34 @@ app.post("/update-location", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Save failed", detail: err.message });
+  }
+});
+
+app.post("/update-loc2", async (req, res) => {
+  const { productId, loc2Value } = req.body;
+  if (!productId || loc2Value === undefined) {
+    return res.status(400).json({ error: "productId & loc2Value required" });
+  }
+
+  try {
+    const mutation = `
+      mutation setLoc2($id: ID!, $val: String!) {
+        metafieldsSet(metafields: [{
+          ownerId: $id,
+          namespace: "custom",
+          key: "location",
+          type: "single_line_text_field",
+          value: $val
+        }]) {
+          userErrors { field message }
+        }
+      }`;
+    const result = await shopifyGraph(mutation, { id: productId, val: loc2Value });
+    if (result.metafieldsSet.userErrors.length) throw new Error(result.metafieldsSet.userErrors[0].message);
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "LOC2 save failed", detail: err.message });
   }
 });
 

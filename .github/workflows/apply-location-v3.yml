@@ -1,0 +1,41 @@
+name: Apply location app v3
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - scripts/apply-location-v3.py
+      - public/index-v3.html
+      - .github/workflows/apply-location-v3.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-location-v3:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Patch backend
+        run: python scripts/apply-location-v3.py
+
+      - name: Install updated location UI
+        run: cp public/index-v3.html public/index.html
+
+      - name: Validate backend syntax
+        run: node --check index.js
+
+      - name: Commit generated source files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.js public/index.html
+          if git diff --cached --quiet; then
+            echo "No generated changes required."
+          else
+            git commit -m "Add Display LOC, LOD and product contains search"
+            git push
+          fi

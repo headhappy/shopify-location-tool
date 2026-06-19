@@ -96,7 +96,7 @@ function filterStockRows(rows, query) {
 
 const STOCK_COLUMNS = [
   "Product", "Variant", "SKU", "Barcode", "Vendor", "Tags", "ProductStatus", "Tracked",
-  "Available", "ShelfLocation", "LOC2", "Location", "LocationId", "InventoryItemId", "VariantId", "ProductId", "Price", "Handle",
+  "Available", "DisplayLocation", "ShelfLocation", "LOC2", "Location", "LocationId", "InventoryItemId", "VariantId", "ProductId", "Price", "Handle",
 ];
 
 const SALES_COLUMNS = ["SKU", "QtySold_1d", "QtySold_7d", "QtySold_30d", "QtySold_90d", "QtySold_180d"];
@@ -120,6 +120,7 @@ async function getVariantStockTotal({ search = "", tag = "", vendor = "", status
             locationMetafield: metafield(namespace: "stock", key: "location") { value }
             product {
               id title handle vendor status tags
+              displayLocMetafield: metafield(namespace: "custom", key: "display_loc") { value }
               loc2Metafield: metafield(namespace: "custom", key: "location") { value }
             }
           }
@@ -151,6 +152,7 @@ async function getVariantStockTotal({ search = "", tag = "", vendor = "", status
         ProductStatus: product.status || "",
         Tracked: "",
         Available: Number(variant.inventoryQuantity ?? 0),
+        DisplayLocation: product.displayLocMetafield?.value || "",
         ShelfLocation: variant.locationMetafield?.value || "",
         LOC2: product.loc2Metafield?.value || "",
         Location: "TOTAL",
@@ -168,6 +170,50 @@ async function getVariantStockTotal({ search = "", tag = "", vendor = "", status
   return rows;
 }
 
+const LOOKUP_CACHE_TTL_MS = 10 * 60 * 1000;
+let lookupCatalogCache = { expiresAt: 0, rows: [] };
+
+function invalidateLookupCache() {
+  lookupCatalogCache = { expiresAt: 0, rows: [] };
+}
+
+async function getLookupCatalog() {
+  if (Date.now() < lookupCatalogCache.expiresAt && lookupCatalogCache.rows.length) {
+    return lookupCatalogCache.rows;
+  }
+  const rows = await getVariantStockTotal({ status: "ACTIVE" });
+  lookupCatalogCache = { expiresAt: Date.now() + LOOKUP_CACHE_TTL_MS, rows };
+  return rows;
+}
+
+function stockRowToLookupVariant(row) {
+  const variantTitle = row.Variant || "";
+  const productTitle = row.Product || "";
+  return {
+    id: row.VariantId || "",
+    productId: row.ProductId || "",
+    sku: row.SKU || "",
+    barcode: row.Barcode || "",
+    title: variantTitle ? `${productTitle} – ${variantTitle}` : productTitle,
+    productTitle,
+    variantTitle,
+    currentDisplayLoc: row.DisplayLocation || "",
+    currentLocation: row.ShelfLocation || "",
+    currentLoc2: row.LOC2 || "",
+  };
+}
+
+async function findVariantsByContains(term) {
+  const needle = normalise(term);
+  const rows = await getLookupCatalog();
+  return rows.filter(row =>
+    normalise(row.Product).includes(needle) ||
+    normalise(row.Variant).includes(needle) ||
+    normalise(row.SKU).includes(needle) ||
+    normalise(row.Barcode) === needle
+  ).slice(0, 100).map(stockRowToLookupVariant);
+}
+
 async function getVariantStockByLocation({ search = "", tag = "", vendor = "", locationId = "", status = "ACTIVE" } = {}) {
   const query = `
     query variantStockByLocation($first: Int!, $after: String, $query: String) {
@@ -179,6 +225,7 @@ async function getVariantStockByLocation({ search = "", tag = "", vendor = "", l
             locationMetafield: metafield(namespace: "stock", key: "location") { value }
             product {
               id title handle vendor status tags
+              displayLocMetafield: metafield(namespace: "custom", key: "display_loc") { value }
               loc2Metafield: metafield(namespace: "custom", key: "location") { value }
             }
             inventoryItem {
@@ -220,6 +267,7 @@ async function getVariantStockByLocation({ search = "", tag = "", vendor = "", l
           ProductStatus: product.status || "",
           Tracked: variant.inventoryItem?.tracked ? "TRUE" : "FALSE",
           Available: availableFromInventoryLevel(level),
+          DisplayLocation: product.displayLocMetafield?.value || "",
           ShelfLocation: variant.locationMetafield?.value || "",
           LOC2: product.loc2Metafield?.value || "",
           Location: loc.name || "",
@@ -513,12 +561,17 @@ app.get("/health", (req, res) => {
     salesSource: "shopifyql.inventory.inventory_units_sold",
     yesterdaySalesEndpoint: "/api/shopify-yesterday-sales.json",
     stockLocationFields: {
+      productDisplayLocation: "DisplayLocation from product metafield custom.display_loc",
       variantShelfLocation: "ShelfLocation from variant metafield stock.location",
       productStockroomLocation: "LOC2 from product metafield custom.location",
     },
     updaterFeatures: {
+      search: "Barcode, SKU, variant or product-title contains search",
+      displayLoc: "Product metafield custom.display_loc",
       location: "Variant metafield stock.location",
       loc2: "Product metafield custom.location",
+      lod: "Stored as (LOD) suffix on Display LOC",
+      displayLocEndpoint: "/update-display-loc",
       loc2Endpoint: "/update-loc2",
     },
     cors: true,
@@ -670,54 +723,74 @@ app.get("/api/shopify-yesterday-sales-raw.csv", async (req, res) => {
 });
 
 app.post("/lookup-variant", async (req, res) => {
-  const { barcode } = req.body;
-  if (!barcode) return res.status(400).json({ error: "Barcode required" });
+  const term = String(req.body?.search || req.body?.barcode || "").trim();
+  if (!term) return res.status(400).json({ error: "Barcode or product name required" });
 
   try {
-    const query = `
-      query ($q: String!) {
-        productVariants(first: 20, query: $q) {
-          edges {
-            node {
-              id
-              title
-              sku
-              barcode
-              locationMetafield: metafield(namespace: "stock", key: "location") { value }
-              product {
-                id
-                title
-                loc2Metafield: metafield(namespace: "custom", key: "location") { value }
+    let hits = [];
+    let matchedBy = "contains";
+
+    // Scanner/barcode queries stay fast. Text containing spaces skips this step.
+    if (!/\s/.test(term)) {
+      try {
+        const query = `
+          query ($q: String!) {
+            productVariants(first: 20, query: $q) {
+              edges {
+                node {
+                  id title sku barcode
+                  locationMetafield: metafield(namespace: "stock", key: "location") { value }
+                  product {
+                    id title
+                    displayLocMetafield: metafield(namespace: "custom", key: "display_loc") { value }
+                    loc2Metafield: metafield(namespace: "custom", key: "location") { value }
+                  }
+                }
               }
             }
-          }
-        }
-      }`;
-    const data = await shopifyGraph(query, { q: buildVariantSearchQuery({ barcode }) });
-    const hits = data.productVariants.edges.map(e => e.node);
-    if (!hits.length) return res.status(404).json({ error: "No variant matches" });
+          }`;
+        const data = await shopifyGraph(query, {
+          q: buildVariantSearchQuery({ barcode: term }),
+        });
+        hits = data.productVariants.edges.map(edge => {
+          const v = edge.node;
+          const variantTitle = v.title === "Default Title" ? "" : v.title || "";
+          return {
+            id: v.id,
+            productId: v.product?.id || "",
+            sku: v.sku || "",
+            barcode: v.barcode || "",
+            title: variantTitle ? `${v.product?.title || ""} – ${variantTitle}` : v.product?.title || "",
+            productTitle: v.product?.title || "",
+            variantTitle,
+            currentDisplayLoc: v.product?.displayLocMetafield?.value || "",
+            currentLocation: v.locationMetafield?.value || "",
+            currentLoc2: v.product?.loc2Metafield?.value || "",
+          };
+        });
+        if (hits.length) matchedBy = "barcode";
+      } catch (barcodeError) {
+        console.warn("Exact barcode lookup skipped:", barcodeError.message);
+      }
+    }
+
+    if (!hits.length) hits = await findVariantsByContains(term);
+    if (!hits.length) return res.status(404).json({ error: "No product or variant matches" });
 
     if (hits.length === 1) {
       const v = hits[0];
       return res.json({
-        variant: { id: v.id, sku: v.sku || "", title: v.title || "" },
-        product: { id: v.product?.id || "" },
-        productTitle: v.product?.title || "",
-        currentLocation: v.locationMetafield?.value || "",
-        currentLoc2: v.product?.loc2Metafield?.value || "",
+        matchedBy,
+        variant: { id: v.id, sku: v.sku, barcode: v.barcode, title: v.variantTitle },
+        product: { id: v.productId },
+        productTitle: v.productTitle || v.title,
+        currentDisplayLoc: v.currentDisplayLoc,
+        currentLocation: v.currentLocation,
+        currentLoc2: v.currentLoc2,
       });
     }
 
-    res.json({
-      variants: hits.map(v => ({
-        id: v.id,
-        productId: v.product?.id || "",
-        sku: v.sku || "",
-        title: `${v.product?.title || ""} – ${v.title || ""}`,
-        currentLocation: v.locationMetafield?.value || "",
-        currentLoc2: v.product?.loc2Metafield?.value || "",
-      })),
-    });
+    res.json({ matchedBy, variants: hits });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Lookup failed", detail: err.message });
@@ -745,10 +818,38 @@ app.post("/update-location", async (req, res) => {
       }`;
     const result = await shopifyGraph(mutation, { id: variantId, val: locationValue });
     if (result.metafieldsSet.userErrors.length) throw new Error(result.metafieldsSet.userErrors[0].message);
+    invalidateLookupCache();
     res.json({ success: true });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Save failed", detail: err.message });
+  }
+});
+
+app.post("/update-display-loc", async (req, res) => {
+  const { productId, displayLocValue } = req.body;
+  if (!productId || displayLocValue === undefined) {
+    return res.status(400).json({ error: "productId & displayLocValue required" });
+  }
+
+  try {
+    const mutation = `
+      mutation setDisplayLoc($id: ID!, $val: String!) {
+        metafieldsSet(metafields: [{
+          ownerId: $id,
+          namespace: "custom",
+          key: "display_loc",
+          type: "single_line_text_field",
+          value: $val
+        }]) { userErrors { field message } }
+      }`;
+    const result = await shopifyGraph(mutation, { id: productId, val: displayLocValue });
+    if (result.metafieldsSet.userErrors.length) throw new Error(result.metafieldsSet.userErrors[0].message);
+    invalidateLookupCache();
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Display LOC save failed", detail: err.message });
   }
 });
 
@@ -773,6 +874,7 @@ app.post("/update-loc2", async (req, res) => {
       }`;
     const result = await shopifyGraph(mutation, { id: productId, val: loc2Value });
     if (result.metafieldsSet.userErrors.length) throw new Error(result.metafieldsSet.userErrors[0].message);
+    invalidateLookupCache();
     res.json({ success: true });
   } catch (err) {
     console.error(err);

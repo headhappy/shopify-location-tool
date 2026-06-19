@@ -1,238 +1,112 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Update Product Locations</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
-    <style>
-      :root{--green:#008060;--dark:#111827;--muted:#6b7280;--line:#d1d5db;--bg:#f8fafc;--blue:#2563eb;}
-      *{box-sizing:border-box}
-      body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;max-width:760px;margin:0 auto;padding:24px;background:#fff;color:#111827;font-size:16px;line-height:1.35}
-      h1{font-size:34px;margin:0 0 8px}
-      .sub{color:#4b5563;margin:0 0 24px}
-      .card{border:1px solid var(--line);border-radius:14px;padding:18px;margin:16px 0;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.04)}
-      .field{margin-bottom:16px}
-      label{font-weight:700;display:block;margin-bottom:6px}
-      input,select{font-size:16px;padding:10px;border:1px solid #9ca3af;border-radius:8px;width:100%;max-width:420px}
-      .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-      button{background:var(--green);color:#fff;border:none;padding:11px 16px;border-radius:8px;cursor:pointer;font-weight:700;font-size:15px}
-      button.secondary{background:#334155}
-      button.warn{background:#b45309}
-      button:disabled{background:#bbb;cursor:not-allowed}
-      .scanner{display:none;margin-top:.5rem;max-width:420px}
-      #status{margin-top:12px;font-weight:700;padding:10px;border-radius:8px;background:#f3f4f6}
-      #status.error{color:#991b1b;background:#fee2e2} #status.ok{color:#065f46;background:#d1fae5}
-      #productInfo,#currentLoc{margin-top:.4rem;color:#374151}
-      .hint{font-size:13px;color:#6b7280;margin-top:5px;max-width:680px}
-      .pill{display:inline-block;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;background:#eef2ff;color:#3730a3;border-radius:999px;padding:3px 8px;margin:2px;font-size:13px}
-      .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-      @media(max-width:700px){.grid{grid-template-columns:1fr} h1{font-size:28px}}
-    </style>
-  </head>
-  <body>
-    <h1>Update Product Locations</h1>
-    <p class="sub">Scan a product barcode, then update shop-floor <strong>LOCATION</strong> and stockroom <strong>LOC2</strong>.</p>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Update Product Locations</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    :root{--green:#008060;--green2:#006e52;--dark:#111827;--muted:#667085;--line:#d0d5dd;--soft:#f2f4f7}
+    *{box-sizing:border-box}
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;max-width:940px;margin:0 auto;padding:24px;background:#fff;color:var(--dark);font-size:16px;line-height:1.4}
+    h1{font-size:34px;line-height:1.1;margin:0 0 8px}.sub{color:#475467;margin:0 0 24px}
+    .card{border:1px solid var(--line);border-radius:14px;padding:18px;margin:16px 0;background:#fff;box-shadow:0 1px 2px rgba(16,24,40,.05)}
+    .field{margin-bottom:14px}label{font-weight:750;display:block;margin-bottom:6px}
+    input,select{font:inherit;padding:11px 12px;border:1px solid #98a2b3;border-radius:8px;width:100%;min-height:44px;background:#fff;color:#101828}
+    input:focus,select:focus{outline:3px solid rgba(0,128,96,.17);border-color:var(--green)}
+    .search-grid{display:grid;grid-template-columns:minmax(220px,1fr) auto auto;gap:10px;align-items:end}
+    .location-grid{display:grid;grid-template-columns:repeat(3,minmax(220px,1fr));gap:16px}
+    .location-box{border:1px solid #eaecf0;border-radius:12px;padding:14px;background:#fcfcfd}
+    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    button{background:var(--green);color:#fff;border:none;padding:11px 16px;border-radius:8px;cursor:pointer;font-weight:750;font-size:15px;min-height:42px}
+    button:hover:not(:disabled){background:var(--green2)}button.secondary{background:#344054}button.secondary:hover:not(:disabled){background:#1d2939}
+    button:disabled{background:#b7b9bd;color:#fff;cursor:not-allowed}.scanner{display:none;margin-top:.65rem;max-width:440px}
+    #status{margin-top:12px;font-weight:700;padding:11px;border-radius:8px;background:var(--soft)}
+    #status.error{color:#912018;background:#fee4e2}#status.ok{color:#05603a;background:#d1fadf}
+    #productInfo,#currentLoc{margin-top:8px;color:#344054}.hint{font-size:13px;color:var(--muted);margin-top:7px}
+    .warning{font-size:13px;color:#b42318;margin-top:6px;min-height:18px}
+    .pill{display:inline-block;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;background:#eef4ff;color:#3538cd;border-radius:999px;padding:3px 8px;margin:2px;font-size:13px}
+    .checkline{display:flex;align-items:center;gap:9px;margin-top:12px;padding:10px;border-radius:9px;background:#fff7ed;border:1px solid #fed7aa}
+    .checkline input{width:20px;height:20px;min-height:auto;margin:0}.checkline label{margin:0;cursor:pointer}
+    .current-grid{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.save-row{margin-top:17px}.safe-note{font-size:13px;color:#475467;margin-top:10px}
+    @media(max-width:820px){.location-grid{grid-template-columns:1fr}.search-grid{grid-template-columns:1fr 1fr}.search-grid .search-input-wrap{grid-column:1/-1}}
+    @media(max-width:520px){body{padding:18px 14px}h1{font-size:28px}.card{padding:16px}.save-row button{flex:1 1 100%}}
+  </style>
+</head>
+<body>
+  <h1>Update Product Locations</h1>
+  <p class="sub">Find a product by barcode, SKU or product name, then update its display, quick-stock and stockroom locations.</p>
 
-    <div class="card">
-      <div class="field">
-        <label>Product Barcode</label>
-        <div class="row">
-          <input id="barcode" placeholder="Scan or type barcode" autocomplete="off" />
-          <button id="scanBarcode">📷 Scan</button>
-          <button id="lookupBtn">Search</button>
-        </div>
-        <div id="barcodeScanner" class="scanner"></div>
+  <div class="card">
+    <div class="search-grid">
+      <div class="search-input-wrap">
+        <label for="searchInput">Barcode or product name</label>
+        <input id="searchInput" placeholder="Scan barcode or type part of product name" autocomplete="off" />
       </div>
-
-      <div class="field" id="variantField" style="display:none;">
-        <label>Choose Variant</label>
-        <select id="variantSelect"></select>
-      </div>
-
-      <div id="productInfo"></div>
-      <div id="currentLoc"></div>
+      <button id="scanSearch">📷 Scan</button><button id="lookupBtn">Search</button>
     </div>
-
-    <div class="card">
-      <div class="grid">
-        <div class="field">
-          <label>LOCATION — shop floor / display</label>
-          <div class="row">
-            <input id="location" placeholder="e.g. TD3, MC6-D1, TDC1 (LOD), LOD" autocomplete="off" />
-            <button id="scanLocation">📷 Scan</button>
-          </div>
-          <div id="locationScanner" class="scanner"></div>
-          <div class="hint">Variant metafield: <span class="pill">stock.location</span>. Use for where staff find the item on the shop floor. For last item on display, prefer <strong>TDC1 (LOD)</strong> instead of only <strong>LOD</strong> where possible.</div>
-        </div>
-
-        <div class="field">
-          <label>LOC2 — back stock / stockroom</label>
-          <div class="row">
-            <input id="loc2" placeholder="e.g. S7, A3, UPSTAIRS, BLANK" autocomplete="off" />
-            <button id="scanLoc2">📷 Scan</button>
-          </div>
-          <div id="loc2Scanner" class="scanner"></div>
-          <div class="hint">Product metafield: <span class="pill">custom.location</span>. Use for the bulk/secondary stock area closest to stock management.</div>
-        </div>
-      </div>
-
-      <div class="row">
-        <button id="saveBtn" disabled>Save LOCATION + LOC2</button>
-        <button id="saveLocationOnly" class="secondary" disabled>Save LOCATION only</button>
-        <button id="saveLoc2Only" class="secondary" disabled>Save LOC2 only</button>
-      </div>
-      <div id="status">Ready.</div>
+    <div id="searchScanner" class="scanner"></div>
+    <div class="field" id="variantField" style="display:none;margin-top:16px">
+      <label for="variantSelect">Choose product / variant</label><select id="variantSelect"></select>
     </div>
+    <div id="productInfo"></div><div id="currentLoc"></div>
+  </div>
 
-    <div class="card">
-      <strong>Simple rule:</strong>
-      <div class="hint">
-        LOCATION = where it is on the shop floor. LOC2 = where the backup/bulk stock is. If LOC2 is empty and the final piece is on display, try using a readable location like <strong>TDC1 (LOD)</strong>. If you only know it is last-on-display but not where, use <strong>LOD</strong> as a temporary warning.
-      </div>
+  <div class="card">
+    <div class="location-grid">
+      <section class="location-box">
+        <label for="displayLoc">Display LOC — customer display</label>
+        <div class="row"><input id="displayLoc" placeholder="e.g. TDC1, GLASS-3, WALL-A" autocomplete="off" /><button id="scanDisplayLoc">📷 Scan</button></div>
+        <div id="displayLocScanner" class="scanner"></div>
+        <div class="checkline"><input id="lodCheck" type="checkbox" /><label for="lodCheck">LOD — Last on Display</label></div>
+        <div class="hint">Product metafield: <span class="pill">custom.display_loc</span>. LOD is saved as a suffix, such as <strong>TDC1 (LOD)</strong>, so the physical display position is never lost.</div>
+        <div id="displayWarning" class="warning"></div>
+      </section>
+      <section class="location-box">
+        <label for="location">LOCATION — quick shop-floor stock</label>
+        <div class="row"><input id="location" placeholder="e.g. TD3, MC6-D1, DRAWER-4" autocomplete="off" /><button id="scanLocation">📷 Scan</button></div>
+        <div id="locationScanner" class="scanner"></div>
+        <div class="hint">Variant metafield: <span class="pill">stock.location</span>. Use for direct, quick-to-customer stock kept near the shop floor.</div>
+      </section>
+      <section class="location-box">
+        <label for="loc2">LOC2 — bulk stock / stockroom</label>
+        <div class="row"><input id="loc2" placeholder="e.g. S7, A3, UPSTAIRS" autocomplete="off" /><button id="scanLoc2">📷 Scan</button></div>
+        <div id="loc2Scanner" class="scanner"></div>
+        <div class="hint">Product metafield: <span class="pill">custom.location</span>. Use for bulk back stock held in the stockroom.</div>
+      </section>
     </div>
+    <div class="row save-row">
+      <button id="saveAll" disabled>Save all changes</button><button id="saveDisplay" class="secondary" disabled>Save Display LOC</button>
+      <button id="saveLocation" class="secondary" disabled>Save LOCATION</button><button id="saveLoc2" class="secondary" disabled>Save LOC2</button>
+    </div>
+    <div class="safe-note"><strong>Blank protection:</strong> empty boxes are never written over an existing Shopify location. Only fields that have changed and contain a value are saved.</div>
+    <div id="status">Ready.</div>
+  </div>
 
-    <script>
-      const $ = id => document.getElementById(id);
-      const barcodeInp = $("barcode");
-      const locInp = $("location");
-      const loc2Inp = $("loc2");
-      const variantSel = $("variantSelect");
-      const variantBox = $("variantField");
-      const statusBox = $("status");
-      const saveBtn = $("saveBtn");
-      const saveLocationOnlyBtn = $("saveLocationOnly");
-      const saveLoc2OnlyBtn = $("saveLoc2Only");
-
-      let variants = [];
-      const chosenVariant = () => variants.length === 1 ? variants[0] : variants[variantSel.selectedIndex];
-
-      const setStatus = (msg, ok) => { statusBox.textContent = msg; statusBox.className = ok ? "ok" : "error"; };
-      const canSaveLocation = () => !!(chosenVariant() && locInp.value.trim());
-      const canSaveLoc2 = () => !!(chosenVariant() && loc2Inp.value.trim());
-      const ready = () => {
-        saveLocationOnlyBtn.disabled = !canSaveLocation();
-        saveLoc2OnlyBtn.disabled = !canSaveLoc2();
-        saveBtn.disabled = !(canSaveLocation() || canSaveLoc2());
-      };
-
-      barcodeInp.addEventListener("input", () => {
-        variants = [];
-        variantBox.style.display = "none";
-        $("productInfo").textContent = "";
-        $("currentLoc").textContent = "";
-        ready();
-      });
-      locInp.addEventListener("input", ready);
-      loc2Inp.addEventListener("input", ready);
-      variantSel.addEventListener("change", () => { populateCurrent(); ready(); });
-
-      function startScan(kind) {
-        const box = $(kind + "Scanner");
-        const dest = kind === "barcode" ? barcodeInp : (kind === "loc2" ? loc2Inp : locInp);
-        if (box.style.display === "block") { box.innerHTML = ""; box.style.display = "none"; return; }
-        box.innerHTML = ""; box.style.display = "block";
-        const qr = new Html5Qrcode(box.id);
-        qr.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } },
-          txt => {
-            dest.value = txt;
-            if (kind === "barcode") { variants = []; variantBox.style.display = "none"; }
-            ready();
-            qr.stop();
-            box.style.display = "none";
-          }
-        ).catch(() => { setStatus("Camera denied", false); box.style.display = "none"; });
-      }
-      $("scanBarcode").onclick = () => startScan("barcode");
-      $("scanLocation").onclick = () => startScan("location");
-      $("scanLoc2").onclick = () => startScan("loc2");
-
-      $("lookupBtn").onclick = async () => {
-        const code = barcodeInp.value.trim();
-        if (!code) return setStatus("Enter barcode", false);
-        setStatus("Searching…", true);
-        try {
-          const res = await fetch("/lookup-variant", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ barcode: code }) });
-          if (!res.ok) throw new Error("No match");
-          const data = await res.json();
-          variants = data.variants || (data.variant ? [{
-            id: data.variant.id,
-            productId: data.product?.id || "",
-            sku: data.variant.sku || "",
-            title: data.productTitle || data.variant.id,
-            currentLocation: data.currentLocation || "",
-            currentLoc2: data.currentLoc2 || "",
-          }] : []);
-          if (!variants.length) throw new Error("No variant matches");
-
-          if (variants.length === 1) {
-            variantBox.style.display = "none";
-          } else {
-            variantBox.style.display = "block";
-            variantSel.innerHTML = variants.map(v => `<option>${v.title}</option>`).join("");
-          }
-
-          $("productInfo").innerHTML = variants.length === 1
-            ? `<strong>Product:</strong> ${variants[0].title}${variants[0].sku ? ` <span class="pill">${variants[0].sku}</span>` : ""}`
-            : `<strong>Matches found:</strong> ${variants.length}`;
-          populateCurrent(true);
-          setStatus("Variant ready ✓", true);
-          ready();
-        } catch (err) {
-          setStatus(err.message || "Lookup failed", false);
-        }
-      };
-
-      function populateCurrent(fillInputs = false) {
-        const v = chosenVariant();
-        if (!v) return;
-        $("currentLoc").innerHTML = `<strong>Current:</strong> LOCATION: <span class="pill">${v.currentLocation || "BLANK"}</span> LOC2: <span class="pill">${v.currentLoc2 || "BLANK"}</span>`;
-        if (fillInputs) {
-          locInp.value = v.currentLocation || "";
-          loc2Inp.value = v.currentLoc2 || "";
-        }
-      }
-
-      async function saveLocation(v) {
-        const loc = locInp.value.trim();
-        if (!loc) return false;
-        const r = await fetch("/update-location", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ variantId: v.id, locationValue: loc }) });
-        if (!r.ok) throw new Error("LOCATION save failed");
-        v.currentLocation = loc;
-        return true;
-      }
-
-      async function saveLoc2(v) {
-        const loc2 = loc2Inp.value.trim();
-        if (!loc2) return false;
-        const productId = v.productId || v.product?.id || "";
-        if (!productId) throw new Error("Missing product ID for LOC2 save");
-        const r = await fetch("/update-loc2", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ productId, loc2Value: loc2 }) });
-        if (!r.ok) throw new Error("LOC2 save failed");
-        v.currentLoc2 = loc2;
-        return true;
-      }
-
-      async function saveBoth(mode) {
-        const v = chosenVariant();
-        if (!v) return;
-        setStatus("Saving…", true);
-        try {
-          let didLocation = false;
-          let didLoc2 = false;
-          if (mode === "both" || mode === "location") didLocation = await saveLocation(v);
-          if (mode === "both" || mode === "loc2") didLoc2 = await saveLoc2(v);
-          populateCurrent(false);
-          ready();
-          setStatus(`Saved ${didLocation ? "LOCATION" : ""}${didLocation && didLoc2 ? " + " : ""}${didLoc2 ? "LOC2" : ""} ✓`, true);
-        } catch (err) {
-          setStatus(err.message || "Save failed", false);
-        }
-      }
-
-      saveBtn.onclick = () => saveBoth("both");
-      saveLocationOnlyBtn.onclick = () => saveBoth("location");
-      saveLoc2OnlyBtn.onclick = () => saveBoth("loc2");
-    </script>
-  </body>
+  <script>
+    const $=id=>document.getElementById(id),searchInp=$("searchInput"),displayInp=$("displayLoc"),locationInp=$("location"),loc2Inp=$("loc2"),lodCheck=$("lodCheck"),variantSel=$("variantSelect"),variantBox=$("variantField"),statusBox=$("status"),saveAllBtn=$("saveAll"),saveDisplayBtn=$("saveDisplay"),saveLocationBtn=$("saveLocation"),saveLoc2Btn=$("saveLoc2");
+    let variants=[];
+    const chosenVariant=()=>variants.length===1?variants[0]:variants[Number(variantSel.value||0)];
+    const clean=value=>String(value??"").trim();
+    const escapeHTML=value=>String(value??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[ch]));
+    function setStatus(message,state=""){statusBox.textContent=message;statusBox.className=state}
+    function parseDisplayLoc(value){const raw=clean(value);if(/^LOD$/i.test(raw))return{base:"",lod:true};const lod=/\s*\(LOD\)\s*$/i.test(raw);return{base:lod?raw.replace(/\s*\(LOD\)\s*$/i,"").trim():raw,lod}}
+    function effectiveDisplayLoc(){const base=clean(displayInp.value);if(lodCheck.checked&&!base)return"";return lodCheck.checked?`${base} (LOD)`:base}
+    function changeState(){const v=chosenVariant();if(!v)return{display:false,location:false,loc2:false,any:false};const displayValue=effectiveDisplayLoc(),locationValue=clean(locationInp.value),loc2Value=clean(loc2Inp.value);const display=!!displayValue&&displayValue!==clean(v.currentDisplayLoc),location=!!locationValue&&locationValue!==clean(v.currentLocation),loc2=!!loc2Value&&loc2Value!==clean(v.currentLoc2);return{display,location,loc2,any:display||location||loc2}}
+    function ready(){const c=changeState();saveDisplayBtn.disabled=!c.display;saveLocationBtn.disabled=!c.location;saveLoc2Btn.disabled=!c.loc2;saveAllBtn.disabled=!c.any;$("displayWarning").textContent=lodCheck.checked&&!clean(displayInp.value)?"Enter the physical display location before marking it LOD.":""}
+    function showCurrent(){const v=chosenVariant();if(!v)return;$("productInfo").innerHTML=`<strong>Product:</strong> ${escapeHTML(v.title||v.productTitle||"")}${v.sku?` <span class="pill">${escapeHTML(v.sku)}</span>`:""}${v.barcode?` <span class="pill">${escapeHTML(v.barcode)}</span>`:""}`;$("currentLoc").innerHTML=`<strong>Current:</strong><div class="current-grid"><span class="pill">DISPLAY: ${escapeHTML(v.currentDisplayLoc||"BLANK")}</span><span class="pill">LOCATION: ${escapeHTML(v.currentLocation||"BLANK")}</span><span class="pill">LOC2: ${escapeHTML(v.currentLoc2||"BLANK")}</span></div>`}
+    function loadSelectedValues(){const v=chosenVariant();if(!v)return;const display=parseDisplayLoc(v.currentDisplayLoc);displayInp.value=display.base;lodCheck.checked=display.lod;locationInp.value=v.currentLocation||"";loc2Inp.value=v.currentLoc2||"";showCurrent();ready()}
+    function resetLookup(){variants=[];variantBox.style.display="none";$("productInfo").textContent="";$("currentLoc").textContent="";displayInp.value="";locationInp.value="";loc2Inp.value="";lodCheck.checked=false;ready()}
+    searchInp.addEventListener("input",resetLookup);[displayInp,locationInp,loc2Inp].forEach(input=>input.addEventListener("input",ready));lodCheck.addEventListener("change",ready);variantSel.addEventListener("change",loadSelectedValues);searchInp.addEventListener("keydown",event=>{if(event.key==="Enter")$("lookupBtn").click()});
+    function startScan(kind){const mapping={search:[searchInp,"searchScanner"],displayLoc:[displayInp,"displayLocScanner"],location:[locationInp,"locationScanner"],loc2:[loc2Inp,"loc2Scanner"]},[destination,scannerId]=mapping[kind],box=$(scannerId);if(box.style.display==="block"){box.innerHTML="";box.style.display="none";return}box.innerHTML="";box.style.display="block";const qr=new Html5Qrcode(scannerId);qr.start({facingMode:"environment"},{fps:10,qrbox:{width:250,height:250}},text=>{destination.value=text;qr.stop().finally(()=>{box.style.display="none";ready();if(kind==="search")$("lookupBtn").click()})}).catch(()=>{setStatus("Camera permission denied.","error");box.style.display="none"})}
+    $("scanSearch").onclick=()=>startScan("search");$("scanDisplayLoc").onclick=()=>startScan("displayLoc");$("scanLocation").onclick=()=>startScan("location");$("scanLoc2").onclick=()=>startScan("loc2");
+    $("lookupBtn").onclick=async()=>{const term=clean(searchInp.value);if(!term)return setStatus("Enter a barcode or part of the product name.","error");setStatus("Searching Shopify…");try{const response=await fetch("/lookup-variant",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({search:term})}),data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.detail||data.error||"No match");variants=data.variants||(data.variant?[{id:data.variant.id,productId:data.product?.id||"",sku:data.variant.sku||"",barcode:data.variant.barcode||"",title:data.productTitle||data.variant.title||data.variant.id,productTitle:data.productTitle||"",variantTitle:data.variant.title||"",currentDisplayLoc:data.currentDisplayLoc||"",currentLocation:data.currentLocation||"",currentLoc2:data.currentLoc2||""}]:[]);if(!variants.length)throw new Error("No product or variant matches");if(variants.length===1)variantBox.style.display="none";else{variantBox.style.display="block";variantSel.innerHTML=variants.map((v,index)=>`<option value="${index}">${escapeHTML(v.title||v.productTitle||"Product")}${v.sku?` — ${escapeHTML(v.sku)}`:""}</option>`).join("");variantSel.value="0"}loadSelectedValues();setStatus(`${variants.length} match${variants.length===1?"":"es"} ready (${data.matchedBy||"search"}).`,"ok")}catch(error){resetLookup();setStatus(error.message||"Lookup failed","error")}};
+    async function postJson(url,body,errorLabel){const response=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}),data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.detail||data.error||errorLabel)}
+    async function saveDisplay(v){const value=effectiveDisplayLoc();if(!value)throw new Error("Enter a physical Display LOC before saving or selecting LOD.");if(!v.productId)throw new Error("Missing product ID for Display LOC save.");await postJson("/update-display-loc",{productId:v.productId,displayLocValue:value},"Display LOC save failed");variants.filter(row=>row.productId===v.productId).forEach(row=>row.currentDisplayLoc=value);return"Display LOC"}
+    async function saveLocation(v){const value=clean(locationInp.value);if(!value)throw new Error("LOCATION is blank and was not saved.");await postJson("/update-location",{variantId:v.id,locationValue:value},"LOCATION save failed");v.currentLocation=value;return"LOCATION"}
+    async function saveLoc2(v){const value=clean(loc2Inp.value);if(!value)throw new Error("LOC2 is blank and was not saved.");if(!v.productId)throw new Error("Missing product ID for LOC2 save.");await postJson("/update-loc2",{productId:v.productId,loc2Value:value},"LOC2 save failed");variants.filter(row=>row.productId===v.productId).forEach(row=>row.currentLoc2=value);return"LOC2"}
+    async function saveMode(mode){const v=chosenVariant();if(!v)return setStatus("Search for a product first.","error");const c=changeState(),jobs=[];if((mode==="all"||mode==="display")&&c.display)jobs.push(()=>saveDisplay(v));if((mode==="all"||mode==="location")&&c.location)jobs.push(()=>saveLocation(v));if((mode==="all"||mode==="loc2")&&c.loc2)jobs.push(()=>saveLoc2(v));if(!jobs.length)return setStatus("No valid changed value to save. Blank values are protected.","error");setStatus("Saving…");try{const saved=[];for(const job of jobs)saved.push(await job());showCurrent();ready();setStatus(`Saved ${saved.join(" + ")} ✓`,"ok")}catch(error){setStatus(error.message||"Save failed","error")}}
+    saveAllBtn.onclick=()=>saveMode("all");saveDisplayBtn.onclick=()=>saveMode("display");saveLocationBtn.onclick=()=>saveMode("location");saveLoc2Btn.onclick=()=>saveMode("loc2");
+  </script>
+</body>
 </html>

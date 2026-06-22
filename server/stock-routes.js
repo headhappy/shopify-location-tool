@@ -42,9 +42,54 @@ function baseRow(variant, product) {
   };
 }
 
-async function stockRows(shopifyGraph, options = {}, byLocation = false) {
+async function stockRows(shopifyGraph, options = {}) {
   const query = `
     query StockRows($first: Int!, $after: String, $query: String) {
+      productVariants(first: $first, after: $after, query: $query) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          id title sku barcode price inventoryQuantity
+          locationMetafield: metafield(namespace: "stock", key: "location") { value }
+          product {
+            id title handle vendor status tags
+            displayLocMetafield: metafield(namespace: "custom", key: "display_loc") { value }
+            loc2Metafield: metafield(namespace: "custom", key: "location") { value }
+          }
+        }
+      }
+    }`;
+
+  const rows = [];
+  let after = null;
+  let pages = 0;
+  do {
+    pages += 1;
+    const data = await shopifyGraph(query, { first: 250, after, query: options.search || null });
+    const connection = data.productVariants;
+    for (const variant of connection.nodes || []) {
+      const product = variant.product || {};
+      const tags = Array.isArray(product.tags) ? product.tags : [];
+      if (options.status && options.status !== "ALL" && product.status !== options.status) continue;
+      if (options.tag && !tags.some(tag => normalise(tag) === normalise(options.tag))) continue;
+      if (options.vendor && normalise(product.vendor) !== normalise(options.vendor)) continue;
+      rows.push({
+        ...baseRow(variant, product),
+        Tracked: "",
+        Available: Number(variant.inventoryQuantity ?? 0),
+        Location: "TOTAL",
+        LocationId: "",
+        InventoryItemId: "",
+      });
+    }
+    after = connection.pageInfo.hasNextPage ? connection.pageInfo.endCursor : null;
+    if (pages > 200) throw new Error("Stock pagination safety stop hit");
+  } while (after);
+  return rows;
+}
+
+async function stockRowsByLocation(shopifyGraph, options = {}) {
+  const query = `
+    query StockRowsByLocation($first: Int!, $after: String, $query: String) {
       productVariants(first: $first, after: $after, query: $query) {
         pageInfo { hasNextPage endCursor }
         nodes {
@@ -79,18 +124,20 @@ async function stockRows(shopifyGraph, options = {}, byLocation = false) {
       if (options.tag && !tags.some(tag => normalise(tag) === normalise(options.tag))) continue;
       if (options.vendor && normalise(product.vendor) !== normalise(options.vendor)) continue;
       const common = baseRow(variant, product);
-
-      if (!byLocation) {
-        rows.push({ ...common, Tracked: "", Available: Number(variant.inventoryQuantity ?? 0), Location: "TOTAL", LocationId: "", InventoryItemId: variant.inventoryItem?.id || "" });
-        continue;
-      }
       for (const level of variant.inventoryItem?.inventoryLevels?.nodes || []) {
         if (options.locationId && level.location?.id !== options.locationId) continue;
-        rows.push({ ...common, Tracked: variant.inventoryItem?.tracked ? "TRUE" : "FALSE", Available: availableFromLevel(level), Location: level.location?.name || "", LocationId: level.location?.id || "", InventoryItemId: variant.inventoryItem?.id || "" });
+        rows.push({
+          ...common,
+          Tracked: variant.inventoryItem?.tracked ? "TRUE" : "FALSE",
+          Available: availableFromLevel(level),
+          Location: level.location?.name || "",
+          LocationId: level.location?.id || "",
+          InventoryItemId: variant.inventoryItem?.id || "",
+        });
       }
     }
     after = connection.pageInfo.hasNextPage ? connection.pageInfo.endCursor : null;
-    if (pages > 200) throw new Error("Stock pagination safety stop hit");
+    if (pages > 200) throw new Error("Stock location pagination safety stop hit");
   } while (after);
   return rows;
 }
@@ -100,24 +147,41 @@ export function registerStockRoutes(app, { shopifyGraph, shop, apiVersion }) {
     try {
       const data = await shopifyGraph(`query { locations(first: 100) { nodes { id name isActive } } }`);
       res.json({ locations: data.locations.nodes || [] });
-    } catch (error) { res.status(500).json({ error: "Location lookup failed", detail: error.message }); }
+    } catch (error) {
+      res.status(500).json({ error: "Location lookup failed", detail: error.message });
+    }
   });
 
   for (const format of ["json", "csv"]) {
     app.get(`/api/shopify-stock.${format}`, async (req, res) => {
       try {
-        const rows = filterRows(await stockRows(shopifyGraph, { search:req.query.search || "", tag:req.query.tag || "", vendor:req.query.vendor || "", status:req.query.status || "ACTIVE" }), req.query);
+        const rows = filterRows(await stockRows(shopifyGraph, {
+          search: req.query.search || "",
+          tag: req.query.tag || "",
+          vendor: req.query.vendor || "",
+          status: req.query.status || "ACTIVE",
+        }), req.query);
         if (format === "csv") return sendCsv(res, "shopify-stock.csv", rows, STOCK_COLUMNS);
-        res.json({ meta:{ app:"Head Happy Stock Control + Locations", mode:"TOTAL_INVENTORY_QUANTITY", shop, apiVersion, generatedAt:new Date().toISOString(), rowCount:rows.length, filters:req.query }, rows });
-      } catch (error) { res.status(500).json({ error:"Stock export failed", detail:error.message }); }
+        res.json({ meta: { app: "Head Happy Stock Control + Locations", mode: "TOTAL_INVENTORY_QUANTITY", shop, apiVersion, generatedAt: new Date().toISOString(), rowCount: rows.length, filters: req.query }, rows });
+      } catch (error) {
+        res.status(500).json({ error: "Stock export failed", detail: error.message });
+      }
     });
 
     app.get(`/api/shopify-stock-by-location.${format}`, async (req, res) => {
       try {
-        const rows = filterRows(await stockRows(shopifyGraph, { search:req.query.search || "", tag:req.query.tag || "", vendor:req.query.vendor || "", locationId:req.query.locationId || "", status:req.query.status || "ACTIVE" }, true), req.query);
+        const rows = filterRows(await stockRowsByLocation(shopifyGraph, {
+          search: req.query.search || "",
+          tag: req.query.tag || "",
+          vendor: req.query.vendor || "",
+          locationId: req.query.locationId || "",
+          status: req.query.status || "ACTIVE",
+        }), req.query);
         if (format === "csv") return sendCsv(res, "shopify-stock-by-location.csv", rows, STOCK_COLUMNS);
-        res.json({ meta:{ app:"Head Happy Stock Control + Locations", mode:"BY_LOCATION", shop, apiVersion, generatedAt:new Date().toISOString(), rowCount:rows.length, filters:req.query }, rows });
-      } catch (error) { res.status(500).json({ error:"Location-level stock export failed", detail:error.message }); }
+        res.json({ meta: { app: "Head Happy Stock Control + Locations", mode: "BY_LOCATION", shop, apiVersion, generatedAt: new Date().toISOString(), rowCount: rows.length, filters: req.query }, rows });
+      } catch (error) {
+        res.status(500).json({ error: "Location-level stock export failed", detail: error.message });
+      }
     });
   }
 }

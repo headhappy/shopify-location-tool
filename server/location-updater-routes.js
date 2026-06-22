@@ -19,12 +19,22 @@ export function registerLocationUpdaterRoutes(app,{shopifyGraph}){
     }
   });
 
-  app.post("/update-display-location",async(req,res)=>{
-    const {productId,displayLocationValue}=req.body;
-    if(!productId || displayLocationValue===undefined) return res.status(400).json({error:"productId & displayLocationValue required"});
-    try{await setTextMetafield(shopifyGraph,productId,"custom","display_loc",displayLocationValue);expireLocationSearchCache();res.json({success:true});}
-    catch(error){res.status(500).json({error:"Display LOC save failed",detail:error.message});}
-  });
+  const saveDisplayLocation=async(req,res)=>{
+    const productId=req.body?.productId;
+    const displayLocationValue=req.body?.displayLocationValue ?? req.body?.displayLocValue;
+    if(!productId || displayLocationValue===undefined) return res.status(400).json({error:"productId and display location value required"});
+    try{
+      await setTextMetafield(shopifyGraph,productId,"custom","display_loc",displayLocationValue);
+      expireLocationSearchCache();
+      res.json({success:true,value:displayLocationValue});
+    }catch(error){
+      console.error(error);
+      res.status(500).json({error:"Display LOC save failed",detail:error.message});
+    }
+  };
+
+  app.post("/update-display-location",saveDisplayLocation);
+  app.post("/update-display-loc",saveDisplayLocation);
 
   app.post("/update-location",async(req,res)=>{
     const {variantId,locationValue}=req.body;

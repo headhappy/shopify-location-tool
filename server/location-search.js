@@ -23,9 +23,22 @@ const fields=`
 
 function escaped(value){ return String(value||"").trim().replace(/\\/g,"\\\\").replace(/"/g,'\\"'); }
 
+function barcodeCandidates(term){
+  const raw=String(term||"").trim();
+  const candidates=new Set([raw]);
+  if(/^\d+$/.test(raw)){
+    const withoutLeadingZero=raw.replace(/^0+/,"");
+    if(withoutLeadingZero) candidates.add(withoutLeadingZero);
+    candidates.add(`0${withoutLeadingZero || raw}`);
+  }
+  return [...candidates].filter(Boolean);
+}
+
 async function exact(shopifyGraph,term){
   const query=`query($q:String!){productVariants(first:50,query:$q){nodes{${fields}}}}`;
-  const data=await shopifyGraph(query,{q:`barcode:"${escaped(term)}" OR sku:"${escaped(term)}"`});
+  const candidates=barcodeCandidates(term);
+  const q=candidates.flatMap(code=>[`barcode:"${escaped(code)}"`,`sku:"${escaped(code)}"`]).join(" OR ");
+  const data=await shopifyGraph(query,{q});
   return (data.productVariants?.nodes||[]).map(item=>row(item));
 }
 
@@ -57,10 +70,18 @@ export function expireLocationSearchCache(){ cache.expiresAt=0; }
 
 export async function findLocationMatches(shopifyGraph,term){
   const exactRows=await exact(shopifyGraph,term);
-  if(exactRows.length) return {mode:"barcode_or_sku",hits:exactRows};
+  if(exactRows.length) return {mode:"barcode_or_sku_normalised",hits:exactRows};
+
   const indexedRows=await indexed(shopifyGraph,term);
   if(indexedRows.length) return {mode:"product_name_contains",hits:indexedRows};
+
   const needle=normalise(term);
-  const fallback=(await catalog(shopifyGraph)).filter(item=>normalise(item.productTitle).includes(needle));
-  return {mode:"product_name_contains_catalog",hits:fallback.slice(0,250)};
+  const barcodeNeedles=new Set(barcodeCandidates(term).map(normalise));
+  const fallback=(await catalog(shopifyGraph)).filter(item=>
+    normalise(item.productTitle).includes(needle) ||
+    normalise(item.variantTitle).includes(needle) ||
+    normalise(item.sku).includes(needle) ||
+    barcodeNeedles.has(normalise(item.barcode))
+  );
+  return {mode:"catalog_normalised",hits:fallback.slice(0,250)};
 }

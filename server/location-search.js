@@ -8,12 +8,13 @@ function row(variant,product=variant.product||{}){
     id:variant.id||"", productId:product.id||"", sku:variant.sku||"", barcode:variant.barcode||"",
     productTitle:product.title||"", variantTitle,
     title:variantTitle ? `${product.title||""} – ${variantTitle}` : (product.title||variant.sku||variant.barcode||"Variant"),
+    stock:Number(variant.inventoryQuantity ?? 0),
     currentDisplayLoc:product.displayLoc?.value||"", currentLocation:variant.quickLoc?.value||"", currentLoc2:product.loc2?.value||"",
   };
 }
 
 const fields=`
-  id title sku barcode
+  id title sku barcode inventoryQuantity
   quickLoc: metafield(namespace:"stock",key:"location") { value }
   product {
     id title
@@ -57,7 +58,7 @@ async function exact(shopifyGraph,term){
 }
 
 async function indexed(shopifyGraph,term){
-  const query=`query($q:String!){products(first:50,query:$q,sortKey:TITLE){nodes{id title displayLoc:metafield(namespace:"custom",key:"display_loc"){value} loc2:metafield(namespace:"custom",key:"location"){value} variants(first:100){nodes{id title sku barcode quickLoc:metafield(namespace:"stock",key:"location"){value}}}}}}`;
+  const query=`query($q:String!){products(first:50,query:$q,sortKey:TITLE){nodes{id title displayLoc:metafield(namespace:"custom",key:"display_loc"){value} loc2:metafield(namespace:"custom",key:"location"){value} variants(first:100){nodes{id title sku barcode inventoryQuantity quickLoc:metafield(namespace:"stock",key:"location"){value}}}}}}`;
   const data=await shopifyGraph(query,{q:String(term).trim()});
   const needle=normalise(term);
   return (data.products?.nodes||[]).filter(product=>normalise(product.title).includes(needle)).flatMap(product=>(product.variants?.nodes||[]).map(variant=>row(variant,product)));
@@ -102,7 +103,7 @@ export async function findLocationMatches(shopifyGraph,term){
 
 export async function findLocationContents(shopifyGraph,locationTerm){
   const target=locationKey(locationTerm);
-  if(!target) return {location:String(locationTerm||""),count:0,rows:[]};
+  if(!target) return {location:String(locationTerm||""),count:0,rows:[],stockTotal:0};
 
   const rows=(await catalog(shopifyGraph)).map(item=>{
     const matches=[];
@@ -118,6 +119,7 @@ export async function findLocationContents(shopifyGraph,locationTerm){
     location:String(locationTerm||"").trim(),
     mode:"location_contains",
     count:rows.length,
+    stockTotal:rows.reduce((sum,item)=>sum+Number(item.stock||0),0),
     lodCount:rows.filter(item=>item.lod).length,
     rows
   };

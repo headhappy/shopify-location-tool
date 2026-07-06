@@ -1,6 +1,6 @@
 {
   "name": "head-happy-stock-control-locations",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "Head Happy Shopify stock control, sales exports and three-level product location updater.",
   "type": "module",
   "scripts": {

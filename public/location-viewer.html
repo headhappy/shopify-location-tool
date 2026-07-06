@@ -17,13 +17,13 @@
     .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}button{background:var(--green);color:#fff;border:none;padding:11px 16px;border-radius:8px;cursor:pointer;font-weight:750;font-size:15px;min-height:42px}button:hover{background:var(--green2)}button.secondary{background:#344054}.scanner{display:none;margin-top:.65rem;max-width:440px}
     #status{margin-top:12px;font-weight:700;padding:11px;border-radius:8px;background:var(--soft)}#status.error{color:#912018;background:#fee4e2}#status.ok{color:#05603a;background:#d1fadf}
     .summary{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.pill{display:inline-block;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;background:#eef4ff;color:#3538cd;border-radius:999px;padding:3px 8px;margin:2px;font-size:13px}.pill.variant{background:var(--bluebg);color:var(--blue);border:1px solid #bfdbfe;font-weight:750}.pill.lod{background:#fff7ed;color:#b45309;border:1px solid #fed7aa}.pill.match{background:#ecfdf3;color:#027a48;border:1px solid #abefc6}
-    table{width:100%;border-collapse:collapse;margin-top:10px}th,td{text-align:left;border-bottom:1px solid #eaecf0;padding:10px 8px;vertical-align:top}th{font-size:12px;text-transform:uppercase;color:#475467;letter-spacing:.04em;background:#f9fafb}.product{font-weight:750}.muted{color:var(--muted);font-size:13px}.empty{padding:18px;border:1px dashed #cbd5e1;border-radius:12px;background:#f8fafc;color:#475467;margin-top:12px}
+    table{width:100%;border-collapse:collapse;margin-top:10px}th,td{text-align:left;border-bottom:1px solid #eaecf0;padding:10px 8px;vertical-align:top}th{font-size:12px;text-transform:uppercase;color:#475467;letter-spacing:.04em;background:#f9fafb}.product{font-weight:750}.muted{color:var(--muted);font-size:13px}.empty{padding:18px;border:1px dashed #cbd5e1;border-radius:12px;background:#f8fafc;color:#475467;margin-top:12px}.helper{font-size:13px;color:#475467;margin-top:8px}
     @media(max-width:760px){body{padding:18px 14px}.search-grid{grid-template-columns:1fr 1fr}.search-grid .search-input-wrap{grid-column:1/-1}table,thead,tbody,tr,td,th{display:block}thead{display:none}tr{border:1px solid #eaecf0;border-radius:12px;margin:10px 0;padding:8px;background:#fff}td{border:0;padding:5px 4px}td:before{content:attr(data-label);display:block;font-size:12px;font-weight:750;color:#475467;text-transform:uppercase}}
   </style>
 </head>
 <body>
   <h1>Scan Location / View Area</h1>
-  <p class="sub">Scan or type a store location code to see products currently mapped there.</p>
+  <p class="sub">Scan or type part of a store location code to see products currently mapped there.</p>
 
   <nav class="topnav">
     <a href="/">Product Locations</a>
@@ -33,8 +33,9 @@
   <div class="card">
     <div class="search-grid">
       <div class="search-input-wrap">
-        <label for="locationInput">Location code</label>
-        <input id="locationInput" placeholder="e.g. MC8, TDC1, Shop Floor, A3" autocomplete="off" />
+        <label for="locationInput">Location search</label>
+        <input id="locationInput" placeholder="e.g. MC, MC8, D9, Shop Floor, A3" autocomplete="off" />
+        <div class="helper">Contains search: <strong>MC</strong> finds MC8 / MC4-D9, and <strong>D9</strong> finds MC4-D9.</div>
       </div>
       <button id="scanLocation">📷 Scan</button>
       <button id="lookupBtn">Search</button>
@@ -46,7 +47,7 @@
 
   <div class="card">
     <div class="row" style="justify-content:space-between">
-      <h2 style="margin:0;font-size:22px">Products in this location</h2>
+      <h2 style="margin:0;font-size:22px">Products matching this location</h2>
       <button id="clearBtn" class="secondary">Clear</button>
     </div>
     <div id="results"><div class="empty">Search a location to see what is mapped there.</div></div>
@@ -58,9 +59,9 @@
     const escapeHTML=value=>String(value??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[ch]));
     function setStatus(message,state=""){statusBox.textContent=message;statusBox.className=state}
     function variantName(item){return clean(item.variantTitle||item.variant_title||"")}
-    function renderSummary(data){summaryBox.innerHTML=`<span class="pill">LOCATION: ${escapeHTML(data.location||"")}</span><span class="pill">PRODUCTS: ${Number(data.count||0)}</span><span class="pill lod">LOD: ${Number(data.lodCount||0)}</span>`}
+    function renderSummary(data){summaryBox.innerHTML=`<span class="pill">SEARCH: ${escapeHTML(data.location||"")}</span><span class="pill">PRODUCTS: ${Number(data.count||0)}</span><span class="pill lod">LOD: ${Number(data.lodCount||0)}</span>`}
     function renderResults(rows){
-      if(!rows.length){resultsBox.innerHTML='<div class="empty">No products are mapped to this exact location.</div>';return}
+      if(!rows.length){resultsBox.innerHTML='<div class="empty">No products match this location search.</div>';return}
       resultsBox.innerHTML=`<table><thead><tr><th>Product</th><th>SKU / Barcode</th><th>Matched</th><th>Mapped locations</th></tr></thead><tbody>${rows.map(item=>{
         const variant=variantName(item);
         const match=(item.matches||[]).map(m=>`<span class="pill match">${escapeHTML(m)}</span>`).join(" ");
@@ -74,7 +75,7 @@
         const response=await fetch("/lookup-location",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({location})});
         const data=await response.json().catch(()=>({}));
         if(!response.ok)throw new Error(data.detail||data.error||"Location lookup failed");
-        renderSummary(data);renderResults(data.rows||[]);setStatus(`${data.count||0} product${Number(data.count||0)===1?"":"s"} mapped to ${data.location}.`,"ok");
+        renderSummary(data);renderResults(data.rows||[]);setStatus(`${data.count||0} product${Number(data.count||0)===1?"":"s"} matching ${data.location}.`,"ok");
       }catch(error){resultsBox.innerHTML='<div class="empty">Lookup failed.</div>';setStatus(error.message||"Lookup failed","error")}
     }
     function startScan(){const box=$("locationScanner");if(box.style.display==="block"){box.innerHTML="";box.style.display="none";return}box.innerHTML="";box.style.display="block";const qr=new Html5Qrcode("locationScanner");qr.start({facingMode:"environment"},{fps:10,qrbox:{width:250,height:250}},text=>{locationInp.value=text;qr.stop().finally(()=>{box.style.display="none";lookupLocation()})}).catch(()=>{setStatus("Camera permission denied.","error");box.style.display="none"})}

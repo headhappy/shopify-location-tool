@@ -34,6 +34,15 @@ function barcodeCandidates(term){
   return [...candidates].filter(Boolean);
 }
 
+function locationKey(value){
+  return normalise(String(value||"").replace(/\s*\(LOD\)\s*$/i,"").replace(/\s+/g," "));
+}
+
+function hasLod(value){
+  const raw=String(value||"").trim();
+  return /^LOD$/i.test(raw) || /\(LOD\)\s*$/i.test(raw);
+}
+
 async function exact(shopifyGraph,term){
   const query=`query($q:String!){productVariants(first:50,query:$q){nodes{${fields}}}}`;
   const candidates=barcodeCandidates(term);
@@ -84,4 +93,27 @@ export async function findLocationMatches(shopifyGraph,term){
     barcodeNeedles.has(normalise(item.barcode))
   );
   return {mode:"catalog_normalised",hits:fallback.slice(0,250)};
+}
+
+export async function findLocationContents(shopifyGraph,locationTerm){
+  const target=locationKey(locationTerm);
+  if(!target) return {location:String(locationTerm||""),count:0,rows:[]};
+
+  const rows=(await catalog(shopifyGraph)).map(item=>{
+    const matches=[];
+    if(locationKey(item.currentDisplayLoc)===target) matches.push("DISPLAY");
+    if(locationKey(item.currentLocation)===target) matches.push("LOCATION");
+    if(locationKey(item.currentLoc2)===target) matches.push("LOC2");
+    return {...item,matches,lod:hasLod(item.currentDisplayLoc)};
+  }).filter(item=>item.matches.length);
+
+  rows.sort((a,b)=>`${a.productTitle} ${a.variantTitle} ${a.sku}`.localeCompare(`${b.productTitle} ${b.variantTitle} ${b.sku}`));
+
+  return {
+    location:String(locationTerm||"").trim(),
+    mode:"location_exact",
+    count:rows.length,
+    lodCount:rows.filter(item=>item.lod).length,
+    rows
+  };
 }

@@ -38,6 +38,11 @@ function locationKey(value){
   return normalise(String(value||"").replace(/\s*\(LOD\)\s*$/i,"").replace(/\s+/g," "));
 }
 
+function locationMatches(value,target){
+  const key=locationKey(value);
+  return !!key && !!target && key.includes(target);
+}
+
 function hasLod(value){
   const raw=String(value||"").trim();
   return /^LOD$/i.test(raw) || /\(LOD\)\s*$/i.test(raw);
@@ -101,9 +106,9 @@ export async function findLocationContents(shopifyGraph,locationTerm){
 
   const rows=(await catalog(shopifyGraph)).map(item=>{
     const matches=[];
-    if(locationKey(item.currentDisplayLoc)===target) matches.push("DISPLAY");
-    if(locationKey(item.currentLocation)===target) matches.push("LOCATION");
-    if(locationKey(item.currentLoc2)===target) matches.push("LOC2");
+    if(locationMatches(item.currentDisplayLoc,target)) matches.push("DISPLAY");
+    if(locationMatches(item.currentLocation,target)) matches.push("LOCATION");
+    if(locationMatches(item.currentLoc2,target)) matches.push("LOC2");
     return {...item,matches,lod:hasLod(item.currentDisplayLoc)};
   }).filter(item=>item.matches.length);
 
@@ -111,7 +116,7 @@ export async function findLocationContents(shopifyGraph,locationTerm){
 
   return {
     location:String(locationTerm||"").trim(),
-    mode:"location_exact",
+    mode:"location_contains",
     count:rows.length,
     lodCount:rows.filter(item=>item.lod).length,
     rows

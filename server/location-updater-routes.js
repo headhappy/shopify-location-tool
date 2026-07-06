@@ -1,5 +1,5 @@
 import { setTextMetafield } from "./shopify-client.js";
-import { expireLocationSearchCache, findLocationMatches } from "./location-search.js";
+import { expireLocationSearchCache, findLocationContents, findLocationMatches } from "./location-search.js";
 
 export function registerLocationUpdaterRoutes(app,{shopifyGraph}){
   app.post("/lookup-variant",async(req,res)=>{
@@ -10,12 +10,34 @@ export function registerLocationUpdaterRoutes(app,{shopifyGraph}){
       if(!result.hits.length) return res.status(404).json({error:"No product or variant matches"});
       if(result.hits.length===1){
         const v=result.hits[0];
-        return res.json({searchMode:result.mode,variant:{id:v.id,sku:v.sku,barcode:v.barcode,title:v.variantTitle},product:{id:v.productId},productTitle:v.productTitle,currentDisplayLoc:v.currentDisplayLoc,currentLocation:v.currentLocation,currentLoc2:v.currentLoc2});
+        return res.json({searchMode:result.mode,matchedBy:result.mode,variant:{id:v.id,sku:v.sku,barcode:v.barcode,title:v.variantTitle},product:{id:v.productId},productTitle:v.productTitle,currentDisplayLoc:v.currentDisplayLoc,currentLocation:v.currentLocation,currentLoc2:v.currentLoc2});
       }
-      res.json({searchMode:result.mode,variants:result.hits});
+      res.json({searchMode:result.mode,matchedBy:result.mode,variants:result.hits});
     }catch(error){
       console.error(error);
       res.status(500).json({error:"Lookup failed",detail:error.message});
+    }
+  });
+
+  app.post("/lookup-location",async(req,res)=>{
+    const location=String(req.body?.location ?? req.body?.search ?? "").trim();
+    if(!location) return res.status(400).json({error:"Location code required"});
+    try{
+      res.json(await findLocationContents(shopifyGraph,location));
+    }catch(error){
+      console.error(error);
+      res.status(500).json({error:"Location lookup failed",detail:error.message});
+    }
+  });
+
+  app.get("/api/location-contents",async(req,res)=>{
+    const location=String(req.query?.location ?? req.query?.search ?? "").trim();
+    if(!location) return res.status(400).json({error:"Location code required"});
+    try{
+      res.json(await findLocationContents(shopifyGraph,location));
+    }catch(error){
+      console.error(error);
+      res.status(500).json({error:"Location lookup failed",detail:error.message});
     }
   });
 

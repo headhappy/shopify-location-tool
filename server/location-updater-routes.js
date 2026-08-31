@@ -10,7 +10,17 @@ export function registerLocationUpdaterRoutes(app,{shopifyGraph}){
       if(!result.hits.length) return res.status(404).json({error:"No product or variant matches"});
       if(result.hits.length===1){
         const v=result.hits[0];
-        return res.json({searchMode:result.mode,matchedBy:result.mode,variant:{id:v.id,sku:v.sku,barcode:v.barcode,title:v.variantTitle},product:{id:v.productId},productTitle:v.productTitle,currentDisplayLoc:v.currentDisplayLoc,currentLocation:v.currentLocation,currentLoc2:v.currentLoc2});
+        return res.json({
+          searchMode:result.mode,
+          matchedBy:result.mode,
+          variant:{id:v.id,sku:v.sku,barcode:v.barcode,title:v.variantTitle,inventoryQuantity:v.stock,stock:v.stock},
+          product:{id:v.productId},
+          productTitle:v.productTitle,
+          stock:v.stock,
+          currentDisplayLoc:v.currentDisplayLoc,
+          currentLocation:v.currentLocation,
+          currentLoc2:v.currentLoc2
+        });
       }
       res.json({searchMode:result.mode,matchedBy:result.mode,variants:result.hits});
     }catch(error){

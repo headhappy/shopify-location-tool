@@ -6,13 +6,12 @@
   <title>Update Product Locations</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
   <style>
-    :root{--green:#008060;--green2:#006e52;--dark:#111827;--muted:#667085;--line:#d0d5dd;--soft:#f2f4f7;--blue:#1849a9;--red:#b42318;--amber:#b54708}
+    :root{--green:#008060;--green2:#006e52;--dark:#111827;--muted:#667085;--line:#d0d5dd;--soft:#f2f4f7;--blue:#1849a9;--red:#b42318}
     *{box-sizing:border-box}
     body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;max-width:1040px;margin:0 auto;padding:24px;background:#fff;color:var(--dark);font-size:16px;line-height:1.4}
     h1{font-size:34px;line-height:1.1;margin:0 0 8px}.sub{color:#475467;margin:0 0 20px}
     .topnav{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 18px}.topnav a{color:var(--blue);background:#eef4ff;border:1px solid #c7d7fe;text-decoration:none;border-radius:999px;padding:7px 12px;font-weight:750}.topnav a.active{background:#008060;color:#fff;border-color:#008060}
     .card{border:1px solid var(--line);border-radius:14px;padding:18px;margin:16px 0;background:#fff;box-shadow:0 1px 2px rgba(16,24,40,.05)}
-    .card h2{font-size:21px;line-height:1.2;margin:0 0 8px}.card-intro{color:#475467;margin:0 0 16px}
     .field{margin-bottom:14px}label{font-weight:750;display:block;margin-bottom:6px}
     input,select{font:inherit;padding:11px 12px;border:1px solid #98a2b3;border-radius:8px;width:100%;min-height:44px;background:#fff;color:#101828}
     input:focus,select:focus{outline:3px solid rgba(0,128,96,.17);border-color:var(--green)}
@@ -21,26 +20,22 @@
     .location-box{border:1px solid #eaecf0;border-radius:12px;padding:14px;background:#fcfcfd}
     .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
     button{background:var(--green);color:#fff;border:none;padding:11px 16px;border-radius:8px;cursor:pointer;font-weight:750;font-size:15px;min-height:42px}
-    button:hover:not(:disabled){background:var(--green2)}button.secondary{background:#344054}button.secondary:hover:not(:disabled){background:#1d2939}button.danger{background:#b42318}button.danger:hover:not(:disabled){background:#912018}
-    button:disabled{background:#b7b9bd;color:#fff;cursor:not-allowed}.scanner{display:none;margin-top:.65rem;max-width:520px}
-    #status,.batch-status{margin-top:12px;font-weight:700;padding:11px;border-radius:8px;background:var(--soft);position:relative;overflow:hidden}
-    #status.error,.batch-status.error{color:#912018;background:#fee4e2}#status.ok,.batch-status.ok{color:#05603a;background:#d1fadf}
-    #status.busy,.batch-status.busy{color:#1849a9;background:#eef4ff;border:1px solid #c7d7fe}
-    #status.busy::after,.batch-status.busy::after{content:"";position:absolute;left:0;right:0;bottom:0;height:4px;background:linear-gradient(90deg,transparent,var(--green),transparent);animation:statusSweep 1.05s linear infinite}
+    button:hover:not(:disabled){background:var(--green2)}button.secondary{background:#344054}button.secondary:hover:not(:disabled){background:#1d2939}
+    button:disabled{background:#b7b9bd;color:#fff;cursor:not-allowed}.scanner{display:none;margin-top:.65rem;max-width:440px}
+    #status{margin-top:12px;font-weight:700;padding:11px;border-radius:8px;background:var(--soft);position:relative;overflow:hidden}
+    #status.error{color:#912018;background:#fee4e2}#status.ok{color:#05603a;background:#d1fadf}
+    #status.busy{color:#1849a9;background:#eef4ff;border:1px solid #c7d7fe}
+    #status.busy::after{content:"";position:absolute;left:0;right:0;bottom:0;height:4px;background:linear-gradient(90deg,transparent,var(--green),transparent);animation:statusSweep 1.05s linear infinite}
     @keyframes statusSweep{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
     #productInfo,#currentLoc{margin-top:8px;color:#344054}.hint{font-size:13px;color:var(--muted);margin-top:7px}
-    .warning{font-size:13px;color:var(--red);margin-top:6px;min-height:18px}
+    .warning{font-size:13px;color:#b42318;margin-top:6px;min-height:18px}
     .pill{display:inline-block;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;background:#eef4ff;color:#3538cd;border-radius:999px;padding:3px 8px;margin:2px;font-size:13px}
     .pill.variant{background:#dbeafe;color:#1d4ed8;border:1px solid #bfdbfe;font-weight:750}.pill.stock{background:#f0fdf4;color:#027a48;border:1px solid #bbf7d0;font-weight:750}.pill.out{background:#fef3f2;color:#b42318;border:1px solid #fecdca;font-weight:750}.product-line{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
     .checkline{display:flex;align-items:center;gap:9px;margin-top:12px;padding:10px;border-radius:9px;background:#fff7ed;border:1px solid #fed7aa}
     .checkline input{width:20px;height:20px;min-height:auto;margin:0}.checkline label{margin:0;cursor:pointer}
     .current-grid{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.save-row{margin-top:17px}.safe-note{font-size:13px;color:#475467;margin-top:10px}
-    .batch-grid{display:grid;grid-template-columns:minmax(180px,.8fr) minmax(220px,1.2fr) auto;gap:12px;align-items:end}
-    .batch-location-row{display:flex;gap:10px;align-items:end;flex-wrap:wrap}.batch-location-row .field{flex:1 1 260px;margin-bottom:0}.batch-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
-    .batch-product-entry{display:grid;grid-template-columns:minmax(220px,1fr) auto;gap:10px;margin-top:14px;align-items:end}.batch-log{margin-top:16px;border:1px solid #eaecf0;border-radius:12px;overflow:hidden;background:#fff}.batch-log-header,.batch-log-row{display:grid;grid-template-columns:80px minmax(210px,1fr) 110px 85px minmax(130px,.9fr);gap:10px;padding:10px 12px;align-items:center}.batch-log-header{background:#f9fafb;font-size:13px;font-weight:800;color:#475467}.batch-log-row{border-top:1px solid #eaecf0;font-size:14px}.batch-log-row.ok{background:#f6fef9}.batch-log-row.warn{background:#fffbeb}.batch-log-row.error{background:#fff1f3}.batch-empty{padding:13px;color:#667085}.muted{color:#667085}.countline{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.target-preview{font-weight:800;color:#05603a}
-    @media(max-width:900px){.location-grid,.batch-grid,.batch-product-entry{grid-template-columns:1fr}.batch-log{overflow-x:auto}.batch-log-header,.batch-log-row{min-width:760px}}
     @media(max-width:820px){.location-grid{grid-template-columns:1fr}.search-grid{grid-template-columns:1fr 1fr}.search-grid .search-input-wrap{grid-column:1/-1}}
-    @media(max-width:520px){body{padding:18px 14px}h1{font-size:28px}.card{padding:16px}.save-row button,.batch-actions button{flex:1 1 100%}}
+    @media(max-width:520px){body{padding:18px 14px}h1{font-size:28px}.card{padding:16px}.save-row button{flex:1 1 100%}}
   </style>
 </head>
 <body>
@@ -49,7 +44,7 @@
 
   <nav class="topnav">
     <a href="/" class="active">Product Locations</a>
-    <a href="#batchScan">Batch Scan</a>
+    <a href="/batch-scan.html">Batch Scan</a>
     <a href="/location-viewer.html">Scan Location</a>
     <a href="/label-station.html">Labels</a>
   </nav>
@@ -100,55 +95,9 @@
     <div class="safe-note"><strong>Blank protection:</strong> empty boxes are never written over an existing Shopify location. Only fields that have changed and contain a value are saved.</div>
   </div>
 
-  <div class="card" id="batchScan">
-    <h2>Batch scan products into one location</h2>
-    <p class="card-intro">Scan or type a location once, choose which Shopify location field it updates, then scan products as fast as possible. Each product saves immediately.</p>
-    <div class="batch-grid">
-      <div class="field">
-        <label for="batchTarget">Target field</label>
-        <select id="batchTarget">
-          <option value="display">DISPLAY LOC — customer display</option>
-          <option value="location">LOCATION — quick shop-floor stock</option>
-          <option value="loc2">LOC2 — bulk stock / stockroom</option>
-        </select>
-      </div>
-      <div class="field">
-        <label for="batchLocation">Location to apply</label>
-        <input id="batchLocation" placeholder="e.g. Cabinet 7, Till Cabinet, Blue 9" autocomplete="off" />
-      </div>
-      <button id="scanBatchLocation">📷 Scan location</button>
-    </div>
-    <div id="batchLocationScanner" class="scanner"></div>
-    <div class="batch-actions">
-      <button id="startBatchScan">▶ Start product scanner</button>
-      <button id="stopBatchScan" class="danger" disabled>Stop scanner</button>
-      <button id="clearBatchLog" class="secondary">Clear log</button>
-    </div>
-    <div class="batch-product-entry">
-      <div class="field" style="margin-bottom:0">
-        <label for="batchProductInput">Manual product barcode / SKU / product search</label>
-        <input id="batchProductInput" placeholder="Scan with keyboard scanner or type SKU/barcode, then press Enter" autocomplete="off" />
-      </div>
-      <button id="batchManualSave">Save product to location</button>
-    </div>
-    <div id="batchProductScanner" class="scanner"></div>
-    <div id="batchStatus" class="batch-status">Batch mode ready.</div>
-    <div class="countline">
-      <span class="pill stock" id="batchSavedCount">SAVED: 0</span>
-      <span class="pill" id="batchSkippedCount">SKIPPED: 0</span>
-      <span class="pill out" id="batchFailedCount">FAILED: 0</span>
-    </div>
-    <div class="safe-note"><strong>Safety:</strong> blank locations are blocked, duplicate scans are skipped, and products with multiple matches are not auto-saved.</div>
-    <div class="batch-log" aria-live="polite">
-      <div class="batch-log-header"><span>Status</span><span>Product</span><span>SKU</span><span>Stock</span><span>Saved to</span></div>
-      <div id="batchLog"><div class="batch-empty">No products scanned yet.</div></div>
-    </div>
-  </div>
-
   <script>
-    const $=id=>document.getElementById(id),searchInp=$("searchInput"),displayInp=$("displayLoc"),locationInp=$("location"),loc2Inp=$("loc2"),lodCheck=$("lodCheck"),variantSel=$("variantSelect"),variantBox=$("variantField"),statusBox=$("status"),saveAllBtn=$("saveAll"),saveDisplayBtn=$("saveDisplay"),saveLocationBtn=$("saveLocation"),saveLoc2Btn=$("saveLoc2"),batchTarget=$("batchTarget"),batchLocation=$("batchLocation"),batchProductInput=$("batchProductInput"),batchStatus=$("batchStatus"),batchLog=$("batchLog"),batchSavedCount=$("batchSavedCount"),batchSkippedCount=$("batchSkippedCount"),batchFailedCount=$("batchFailedCount");
+    const $=id=>document.getElementById(id),searchInp=$("searchInput"),displayInp=$("displayLoc"),locationInp=$("location"),loc2Inp=$("loc2"),lodCheck=$("lodCheck"),variantSel=$("variantSelect"),variantBox=$("variantField"),statusBox=$("status"),saveAllBtn=$("saveAll"),saveDisplayBtn=$("saveDisplay"),saveLocationBtn=$("saveLocation"),saveLoc2Btn=$("saveLoc2");
     let variants=[];
-    let batchScanner=null,batchBusy=false,lastBatchText="",lastBatchAt=0,batchCounts={saved:0,skipped:0,failed:0};
     const chosenVariant=()=>variants.length===1?variants[0]:variants[Number(variantSel.value||0)];
     const clean=value=>String(value??"").trim();
     const escapeHTML=value=>String(value??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[ch]));
@@ -157,39 +106,23 @@
     function stockQty(v){return Number(v?.stock ?? v?.inventoryQuantity ?? v?.inventory_quantity ?? 0)}
     function stockPill(v){const qty=stockQty(v);return `<span class="pill ${qty>0?"stock":"out"}">STOCK: ${qty}</span>`}
     function setStatus(message,state=""){statusBox.textContent=message;statusBox.className=state}
-    function setBatchStatus(message,state=""){batchStatus.textContent=message;batchStatus.className=`batch-status ${state}`.trim()}
     function parseDisplayLoc(value){const raw=clean(value);if(/^LOD$/i.test(raw))return{base:"",lod:true};const lod=/\s*\(LOD\)\s*$/i.test(raw);return{base:lod?raw.replace(/\s*\(LOD\)\s*$/i,"").trim():raw,lod}}
     function effectiveDisplayLoc(){const base=clean(displayInp.value);if(lodCheck.checked&&!base)return"";return lodCheck.checked?`${base} (LOD)`:base}
-    function targetLabel(target=batchTarget.value){return target==="display"?"DISPLAY LOC":target==="location"?"LOCATION":"LOC2"}
-    function targetSaveText(){return `${targetLabel()} → ${clean(batchLocation.value)||"BLANK"}`}
     function changeState(){const v=chosenVariant();if(!v)return{display:false,location:false,loc2:false,any:false};const displayValue=effectiveDisplayLoc(),locationValue=clean(locationInp.value),loc2Value=clean(loc2Inp.value);const display=!!displayValue&&displayValue!==clean(v.currentDisplayLoc),location=!!locationValue&&locationValue!==clean(v.currentLocation),loc2=!!loc2Value&&loc2Value!==clean(v.currentLoc2);return{display,location,loc2,any:display||location||loc2}}
     function ready(){const c=changeState();saveDisplayBtn.disabled=!c.display;saveLocationBtn.disabled=!c.location;saveLoc2Btn.disabled=!c.loc2;saveAllBtn.disabled=!c.any;$("displayWarning").textContent=lodCheck.checked&&!clean(displayInp.value)?"Enter the physical display location before marking it LOD.":""}
     function showCurrent(){const v=chosenVariant();if(!v)return;const variant=variantName(v);$("productInfo").innerHTML=`<div class="product-line"><strong>Product:</strong> <span>${escapeHTML(productName(v))}</span>${variant?` <span class="pill variant">${escapeHTML(variant)}</span>`:""}${v.sku?` <span class="pill">${escapeHTML(v.sku)}</span>`:""}${v.barcode?` <span class="pill">${escapeHTML(v.barcode)}</span>`:""} ${stockPill(v)}</div>`;$("currentLoc").innerHTML=`<strong>Current:</strong><div class="current-grid">${stockPill(v)}<span class="pill">DISPLAY: ${escapeHTML(v.currentDisplayLoc||"BLANK")}</span><span class="pill">LOCATION: ${escapeHTML(v.currentLocation||"BLANK")}</span><span class="pill">LOC2: ${escapeHTML(v.currentLoc2||"BLANK")}</span></div>`}
     function loadSelectedValues(){const v=chosenVariant();if(!v)return;const display=parseDisplayLoc(v.currentDisplayLoc);displayInp.value=display.base;lodCheck.checked=display.lod;locationInp.value=v.currentLocation||"";loc2Inp.value=v.currentLoc2||"";showCurrent();ready()}
     function resetLookup(){variants=[];variantBox.style.display="none";$("productInfo").textContent="";$("currentLoc").textContent="";displayInp.value="";locationInp.value="";loc2Inp.value="";lodCheck.checked=false;setStatus("Ready.");ready()}
     searchInp.addEventListener("input",resetLookup);[displayInp,locationInp,loc2Inp].forEach(input=>input.addEventListener("input",ready));lodCheck.addEventListener("change",ready);variantSel.addEventListener("change",loadSelectedValues);searchInp.addEventListener("keydown",event=>{if(event.key==="Enter")$("lookupBtn").click()});
-    batchProductInput.addEventListener("keydown",event=>{if(event.key==="Enter"){$("batchManualSave").click()}});
-    batchTarget.addEventListener("change",()=>setBatchStatus(`Target set: ${targetSaveText()}`,"ok"));
-    batchLocation.addEventListener("input",()=>setBatchStatus(`Target ready: ${targetSaveText()}`));
-    function startScan(kind){const mapping={search:[searchInp,"searchScanner"],displayLoc:[displayInp,"displayLocScanner"],location:[locationInp,"locationScanner"],loc2:[loc2Inp,"loc2Scanner"],batchLocation:[batchLocation,"batchLocationScanner"]},[destination,scannerId]=mapping[kind],box=$(scannerId);if(box.style.display==="block"){box.innerHTML="";box.style.display="none";return}box.innerHTML="";box.style.display="block";const qr=new Html5Qrcode(scannerId);qr.start({facingMode:"environment"},{fps:10,qrbox:{width:250,height:250}},text=>{destination.value=text;qr.stop().finally(()=>{box.style.display="none";ready();if(kind==="search")$("lookupBtn").click();if(kind==="batchLocation")setBatchStatus(`Location scanned: ${targetSaveText()}`,"ok")})}).catch(()=>{setStatus("Camera permission denied.","error");box.style.display="none"})}
-    $("scanSearch").onclick=()=>startScan("search");$("scanDisplayLoc").onclick=()=>startScan("displayLoc");$("scanLocation").onclick=()=>startScan("location");$("scanLoc2").onclick=()=>startScan("loc2");$("scanBatchLocation").onclick=()=>startScan("batchLocation");
-    async function lookupVariants(term){const response=await fetch("/lookup-variant",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({search:term})});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.detail||data.error||"No match");const found=data.variants||(data.variant?[{id:data.variant.id,productId:data.product?.id||"",sku:data.variant.sku||"",barcode:data.variant.barcode||"",title:data.productTitle||data.variant.title||data.variant.id,productTitle:data.productTitle||"",variantTitle:data.variant.title||"",stock:data.stock??data.variant.stock??data.variant.inventoryQuantity??data.inventoryQuantity??0,currentDisplayLoc:data.currentDisplayLoc||"",currentLocation:data.currentLocation||"",currentLoc2:data.currentLoc2||""}]:[]);return{data,variants:found}}
-    $("lookupBtn").onclick=async()=>{const term=clean(searchInp.value);if(!term)return setStatus("Enter a barcode or part of the product name.","error");setStatus("Searching Shopify…","busy");try{const result=await lookupVariants(term);variants=result.variants;if(!variants.length)throw new Error("No product or variant matches");if(variants.length===1)variantBox.style.display="none";else{variantBox.style.display="block";variantSel.innerHTML=variants.map((v,index)=>{const variant=variantName(v);return `<option value="${index}">${escapeHTML(productName(v))}${variant?` — ${escapeHTML(variant)}`:""}${v.sku?` — ${escapeHTML(v.sku)}`:""} — Stock ${stockQty(v)}</option>`}).join("");variantSel.value="0"}loadSelectedValues();const totalStock=variants.reduce((sum,v)=>sum+stockQty(v),0);setStatus(`${variants.length} match${variants.length===1?"":"es"} ready • stock ${totalStock} (${result.data.matchedBy||result.data.searchMode||"search"}).`,"ok")}catch(error){resetLookup();setStatus(error.message||"Lookup failed","error")}};
+    function startScan(kind){const mapping={search:[searchInp,"searchScanner"],displayLoc:[displayInp,"displayLocScanner"],location:[locationInp,"locationScanner"],loc2:[loc2Inp,"loc2Scanner"]},[destination,scannerId]=mapping[kind],box=$(scannerId);if(box.style.display==="block"){box.innerHTML="";box.style.display="none";return}box.innerHTML="";box.style.display="block";const qr=new Html5Qrcode(scannerId);qr.start({facingMode:"environment"},{fps:10,qrbox:{width:250,height:250}},text=>{destination.value=text;destination.blur();qr.stop().finally(()=>{box.style.display="none";ready();if(kind==="search")$("lookupBtn").click()})}).catch(()=>{setStatus("Camera permission denied.","error");box.style.display="none"})}
+    $("scanSearch").onclick=()=>startScan("search");$("scanDisplayLoc").onclick=()=>startScan("displayLoc");$("scanLocation").onclick=()=>startScan("location");$("scanLoc2").onclick=()=>startScan("loc2");
+    $("lookupBtn").onclick=async()=>{const term=clean(searchInp.value);if(!term)return setStatus("Enter a barcode or part of the product name.","error");setStatus("Searching Shopify…","busy");try{const response=await fetch("/lookup-variant",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({search:term})}),data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.detail||data.error||"No match");variants=data.variants||(data.variant?[{id:data.variant.id,productId:data.product?.id||"",sku:data.variant.sku||"",barcode:data.variant.barcode||"",title:data.productTitle||data.variant.title||data.variant.id,productTitle:data.productTitle||"",variantTitle:data.variant.title||"",stock:data.stock??data.variant.stock??data.variant.inventoryQuantity??data.inventoryQuantity??0,currentDisplayLoc:data.currentDisplayLoc||"",currentLocation:data.currentLocation||"",currentLoc2:data.currentLoc2||""}]:[]);if(!variants.length)throw new Error("No product or variant matches");if(variants.length===1)variantBox.style.display="none";else{variantBox.style.display="block";variantSel.innerHTML=variants.map((v,index)=>{const variant=variantName(v);return `<option value="${index}">${escapeHTML(productName(v))}${variant?` — ${escapeHTML(variant)}`:""}${v.sku?` — ${escapeHTML(v.sku)}`:""} — Stock ${stockQty(v)}</option>`}).join("");variantSel.value="0"}loadSelectedValues();const totalStock=variants.reduce((sum,v)=>sum+stockQty(v),0);setStatus(`${variants.length} match${variants.length===1?"":"es"} ready • stock ${totalStock} (${data.matchedBy||data.searchMode||"search"}).`,"ok")}catch(error){resetLookup();setStatus(error.message||"Lookup failed","error")}};
     async function postJson(url,body,errorLabel){const response=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}),data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.detail||data.error||errorLabel)}
     async function saveDisplay(v){const value=effectiveDisplayLoc();if(!value)throw new Error("Enter a physical Display LOC before saving or selecting LOD.");if(!v.productId)throw new Error("Missing product ID for Display LOC save.");await postJson("/update-display-loc",{productId:v.productId,displayLocValue:value},"Display LOC save failed");variants.filter(row=>row.productId===v.productId).forEach(row=>row.currentDisplayLoc=value);return"Display LOC"}
     async function saveLocation(v){const value=clean(locationInp.value);if(!value)throw new Error("LOCATION is blank and was not saved.");await postJson("/update-location",{variantId:v.id,locationValue:value},"LOCATION save failed");v.currentLocation=value;return"LOCATION"}
     async function saveLoc2(v){const value=clean(loc2Inp.value);if(!value)throw new Error("LOC2 is blank and was not saved.");if(!v.productId)throw new Error("Missing product ID for LOC2 save.");await postJson("/update-loc2",{productId:v.productId,loc2Value:value},"LOC2 save failed");variants.filter(row=>row.productId===v.productId).forEach(row=>row.currentLoc2=value);return"LOC2"}
     async function saveMode(mode){const v=chosenVariant();if(!v)return setStatus("Search for a product first.","error");const c=changeState(),jobs=[];if((mode==="all"||mode==="display")&&c.display)jobs.push(()=>saveDisplay(v));if((mode==="all"||mode==="location")&&c.location)jobs.push(()=>saveLocation(v));if((mode==="all"||mode==="loc2")&&c.loc2)jobs.push(()=>saveLoc2(v));if(!jobs.length)return setStatus("No valid changed value to save. Blank values are protected.","error");setStatus("Saving…","busy");try{const saved=[];for(const job of jobs)saved.push(await job());showCurrent();ready();setStatus(`Saved ${saved.join(" + ")} ✓`,"ok")}catch(error){setStatus(error.message||"Save failed","error")}}
     saveAllBtn.onclick=()=>saveMode("all");saveDisplayBtn.onclick=()=>saveMode("display");saveLocationBtn.onclick=()=>saveMode("location");saveLoc2Btn.onclick=()=>saveMode("loc2");
-    function updateBatchCounts(){batchSavedCount.textContent=`SAVED: ${batchCounts.saved}`;batchSkippedCount.textContent=`SKIPPED: ${batchCounts.skipped}`;batchFailedCount.textContent=`FAILED: ${batchCounts.failed}`}
-    function addBatchLog(kind,product,sku,stock,target,message){if(batchLog.querySelector(".batch-empty"))batchLog.innerHTML="";const row=document.createElement("div");row.className=`batch-log-row ${kind}`;row.innerHTML=`<span>${kind==="ok"?"✅ Saved":kind==="warn"?"⚠️ Skip":"❌ Failed"}</span><span><strong>${escapeHTML(product||message||"Product")}</strong>${message&&product?`<div class="muted">${escapeHTML(message)}</div>`:""}</span><span>${escapeHTML(sku||"")}</span><span>${escapeHTML(stock??"")}</span><span>${escapeHTML(target||"")}</span>`;batchLog.prepend(row)}
-    function batchKeyFor(v,target,value){return `${target}|${value}|${target==="location"?v.id:v.productId||v.id}`}
-    const batchSavedKeys=new Set();
-    async function saveBatchTarget(v,target,value){if(target==="display"){if(!v.productId)throw new Error("Missing product ID for DISPLAY LOC save.");await postJson("/update-display-loc",{productId:v.productId,displayLocValue:value},"DISPLAY LOC save failed");v.currentDisplayLoc=value;return"DISPLAY LOC"}if(target==="location"){await postJson("/update-location",{variantId:v.id,locationValue:value},"LOCATION save failed");v.currentLocation=value;return"LOCATION"}if(!v.productId)throw new Error("Missing product ID for LOC2 save.");await postJson("/update-loc2",{productId:v.productId,loc2Value:value},"LOC2 save failed");v.currentLoc2=value;return"LOC2"}
-    async function handleBatchProduct(term){const text=clean(term);const value=clean(batchLocation.value);const target=batchTarget.value;if(!value){batchCounts.failed++;updateBatchCounts();addBatchLog("error","","","",targetLabel(target),"Enter or scan a location first.");setBatchStatus("Enter or scan a location before scanning products.","error");return}if(!text){setBatchStatus("Scan or type a product first.","error");return}if(batchBusy)return;batchBusy=true;setBatchStatus(`Scanning ${text}…`,"busy");try{const result=await lookupVariants(text);const matches=result.variants;if(!matches.length)throw new Error("No product or variant matches");if(matches.length>1){batchCounts.skipped++;updateBatchCounts();addBatchLog("warn",`${matches.length} matches found`,text,"",targetSaveText(),"Use Product Locations search to choose the exact variant.");setBatchStatus(`Skipped: ${matches.length} matches for ${text}.`,"error");return}const v=matches[0];const key=batchKeyFor(v,target,value);if(batchSavedKeys.has(key)){batchCounts.skipped++;updateBatchCounts();addBatchLog("warn",productName(v),v.sku,stockQty(v),targetSaveText(),"Already scanned in this session.");setBatchStatus(`Skipped duplicate: ${v.sku||productName(v)}`);return}const savedField=await saveBatchTarget(v,target,value);batchSavedKeys.add(key);batchCounts.saved++;updateBatchCounts();addBatchLog("ok",productName(v),v.sku,stockQty(v),`${savedField}: ${value}`,"");setBatchStatus(`Saved ${v.sku||productName(v)} to ${savedField}: ${value} ✓`,"ok")}catch(error){batchCounts.failed++;updateBatchCounts();addBatchLog("error","",text,"",targetSaveText(),error.message||"Batch save failed");setBatchStatus(error.message||"Batch save failed","error")}finally{batchBusy=false;batchProductInput.value="";batchProductInput.focus()}}
-    async function startBatchProductScanner(){const value=clean(batchLocation.value);if(!value)return setBatchStatus("Enter or scan a location before starting product scanner.","error");const box=$("batchProductScanner");if(batchScanner){return setBatchStatus("Product scanner is already running.","ok")}box.innerHTML="";box.style.display="block";batchScanner=new Html5Qrcode("batchProductScanner");$("startBatchScan").disabled=true;$("stopBatchScan").disabled=false;setBatchStatus(`Product scanner running • ${targetSaveText()}`,"busy");try{await batchScanner.start({facingMode:"environment"},{fps:10,qrbox:{width:260,height:260}},text=>{const now=Date.now();if(text===lastBatchText&&now-lastBatchAt<1600)return;lastBatchText=text;lastBatchAt=now;handleBatchProduct(text)});}catch(error){batchScanner=null;box.style.display="none";$("startBatchScan").disabled=false;$("stopBatchScan").disabled=true;setBatchStatus("Camera permission denied or scanner failed to start.","error")}}
-    async function stopBatchProductScanner(){if(!batchScanner)return;try{await batchScanner.stop()}catch(error){}batchScanner=null;$("batchProductScanner").style.display="none";$("startBatchScan").disabled=false;$("stopBatchScan").disabled=true;setBatchStatus("Product scanner stopped.")}
-    $("batchManualSave").onclick=()=>handleBatchProduct(batchProductInput.value);$("startBatchScan").onclick=startBatchProductScanner;$("stopBatchScan").onclick=stopBatchProductScanner;$("clearBatchLog").onclick=()=>{batchCounts={saved:0,skipped:0,failed:0};batchSavedKeys.clear();updateBatchCounts();batchLog.innerHTML='<div class="batch-empty">No products scanned yet.</div>';setBatchStatus("Batch log cleared.")};
   </script>
 </body>
 </html>

@@ -4,7 +4,7 @@
   const $ = (id) => document.getElementById(id);
   const STORAGE_KEY = "headhappy.label-station.queue.v1";
   const TEMPLATE_KEY = "headhappy.label-station.template.v1";
-  const MAX_PRINT_PAGES = 250;
+  const MAX_PRINT_PAGES = 500;
 
   const TEMPLATE_NAMES = {
     customer: "Customer",
@@ -424,7 +424,7 @@
           <select class="queue-template-select" data-role="template" data-id="${escapeHtml(item.id)}" aria-label="Label type">${templateOptions(item)}</select>
           <div class="copy-control" aria-label="Number of copies">
             <button type="button" data-action="decrease" data-id="${escapeHtml(item.id)}" aria-label="Decrease copies">−</button>
-            <input data-role="copies" data-id="${escapeHtml(item.id)}" type="number" min="1" max="250" value="${clampCopies(item.copies)}" aria-label="Copies" />
+            <input data-role="copies" data-id="${escapeHtml(item.id)}" type="number" min="1" max="500" value="${clampCopies(item.copies)}" aria-label="Copies" />
             <button type="button" data-action="increase" data-id="${escapeHtml(item.id)}" aria-label="Increase copies">+</button>
           </div>
           <div class="row-actions">
@@ -542,6 +542,10 @@
       if (!response.ok) throw new Error(data.detail || data.error || "Location list failed.");
       const locations = Array.isArray(data.locations) ? data.locations : Array.isArray(data.rows) ? data.rows : [];
       if (!locations.length) throw new Error("No usable location codes were found.");
+      if (locations.length > 100 && !window.confirm(`Found ${locations.length} unique active location codes. Add all of them to the print queue?`)) {
+        setStatus(`Location list loaded: ${locations.length} unique codes. Nothing was added.`, "ok");
+        return;
+      }
       let added = 0;
       let skipped = 0;
       locations.forEach((location) => {

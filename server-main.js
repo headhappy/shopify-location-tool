@@ -28,6 +28,7 @@ app.use((req,res,next)=>{
   next();
 });
 app.use(express.json({ limit:"20mb" }));
+app.use("/vendor/bwip-js",express.static("node_modules/bwip-js/dist"));
 app.use(express.static("public"));
 
 const shopifyGraph=createShopifyGraph({ shop:SHOP,token:TOKEN,apiVersion:API });
@@ -58,6 +59,12 @@ app.get("/health",(_req,res)=>res.json({
     loc2Endpoint:"/update-loc2",
     lod:"Stored in Display LOC as LOCATION (LOD), or LOD if no position is known",
     blankProtection:"Existing values require explicit Clear confirmation"
+  },
+  labelStation:{
+    page:"/label-station.html",
+    paper:"40x25mm",
+    barcode:"Code 128",
+    locationListEndpoint:"/api/labels/locations"
   },
   cors:true,
   time:new Date().toISOString()

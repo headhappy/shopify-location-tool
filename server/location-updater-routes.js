@@ -1,5 +1,5 @@
 import { setTextMetafield } from "./shopify-client.js";
-import { expireLocationSearchCache, findLocationContents, findLocationMatches } from "./location-search.js";
+import { expireLocationSearchCache, findLocationContents, findLocationMatches, listLocationLabels } from "./location-search.js";
 
 export function registerLocationUpdaterRoutes(app,{shopifyGraph}){
   app.post("/lookup-variant",async(req,res)=>{
@@ -13,10 +13,14 @@ export function registerLocationUpdaterRoutes(app,{shopifyGraph}){
         return res.json({
           searchMode:result.mode,
           matchedBy:result.mode,
-          variant:{id:v.id,sku:v.sku,barcode:v.barcode,title:v.variantTitle,inventoryQuantity:v.stock,stock:v.stock},
-          product:{id:v.productId},
+          variant:{id:v.id,sku:v.sku,barcode:v.barcode,title:v.variantTitle,price:v.price,inventoryQuantity:v.stock,stock:v.stock},
+          product:{id:v.productId,handle:v.handle,vendor:v.vendor,status:v.productStatus},
           productTitle:v.productTitle,
+          price:v.price,
           stock:v.stock,
+          handle:v.handle,
+          vendor:v.vendor,
+          productStatus:v.productStatus,
           currentDisplayLoc:v.currentDisplayLoc,
           currentLocation:v.currentLocation,
           currentLoc2:v.currentLoc2
@@ -26,6 +30,15 @@ export function registerLocationUpdaterRoutes(app,{shopifyGraph}){
     }catch(error){
       console.error(error);
       res.status(500).json({error:"Lookup failed",detail:error.message});
+    }
+  });
+
+  app.get("/api/labels/locations",async(_req,res)=>{
+    try{
+      res.json(await listLocationLabels(shopifyGraph));
+    }catch(error){
+      console.error(error);
+      res.status(500).json({error:"Label location list failed",detail:error.message});
     }
   });
 

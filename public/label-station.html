@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Head Happy Label Station</title>
+  <link rel="stylesheet" href="/label-station.css" />
+  <script src="/vendor/bwip-js/bwip-js-min.js" defer></script>
+  <script src="/label-station.js" defer></script>
+</head>
+<body>
+  <div id="appShell">
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">HEAD HAPPY · STORE TOOLS</p>
+        <h1>Label Station</h1>
+        <p class="sub">Scan or find products, build a print queue, then send exact 40 × 25 mm labels to any installed label printer.</p>
+      </div>
+      <button id="headerPrintBtn" class="primary print-cta" type="button" disabled>
+        <span>Print queue</span>
+        <span id="headerPrintCount" class="button-count">0</span>
+      </button>
+    </header>
+
+    <nav class="topnav" aria-label="Store tools">
+      <a href="/">Product Locations</a>
+      <a href="/location-viewer.html">Scan Location</a>
+      <a href="/label-station.html" class="active" aria-current="page">Labels</a>
+    </nav>
+
+    <main class="workspace">
+      <div class="main-column">
+        <section class="panel search-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="step">1 · FIND</p>
+              <h2>Scan or search a product</h2>
+            </div>
+            <span id="activeTemplateChip" class="active-template-chip">Product + location</span>
+          </div>
+
+          <form id="searchForm" class="search-form">
+            <label class="sr-only" for="searchInput">Barcode, SKU or product name</label>
+            <input id="searchInput" name="search" placeholder="Scan barcode, type a SKU, or search a product name" autocomplete="off" autofocus />
+            <button class="primary" type="submit">Search</button>
+          </form>
+          <p class="helper">A USB barcode scanner normally sends Enter automatically. An exact match is added straight to the queue.</p>
+          <div id="status" class="status" role="status" aria-live="polite">Ready for a scan.</div>
+          <div id="searchResults" class="results" aria-live="polite">
+            <div class="empty-state compact">Search results will appear here.</div>
+          </div>
+        </section>
+
+        <section class="panel queue-panel">
+          <div class="panel-heading queue-heading">
+            <div>
+              <p class="step">2 · QUEUE</p>
+              <h2>Labels to print <span id="queueLineCount" class="muted-count">0 items</span></h2>
+            </div>
+            <button id="clearQueueBtn" class="text-button danger" type="button" disabled>Clear queue</button>
+          </div>
+          <div id="queueList" class="queue-list">
+            <div class="empty-state">
+              <strong>No labels queued yet.</strong>
+              <span>Scan a product above, or use a quick label on the right.</span>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <aside class="side-column">
+        <section class="panel template-panel">
+          <div class="panel-heading compact-heading">
+            <div>
+              <p class="step">LABEL TYPE</p>
+              <h2>Choose what to print</h2>
+            </div>
+          </div>
+          <div id="templatePicker" class="template-picker" role="radiogroup" aria-label="Product label type">
+            <button class="template-option" data-template="customer" type="button" role="radio" aria-checked="false">
+              <span class="template-mark">£</span><span><strong>Customer</strong><small>Name, price, barcode</small></span>
+            </button>
+            <button class="template-option active" data-template="product" type="button" role="radio" aria-checked="true">
+              <span class="template-mark barcode-mark">▥</span><span><strong>Product + location</strong><small>Your everyday label</small></span>
+            </button>
+            <button class="template-option" data-template="staff" type="button" role="radio" aria-checked="false">
+              <span class="template-mark text-mark">SKU</span><span><strong>Staff</strong><small>SKU and all locations</small></span>
+            </button>
+            <button class="template-option" data-template="barcode" type="button" role="radio" aria-checked="false">
+              <span class="template-mark barcode-mark">▥</span><span><strong>Barcode only</strong><small>Large Code 128</small></span>
+            </button>
+            <button class="template-option" data-template="product-qr" type="button" role="radio" aria-checked="false">
+              <span class="template-mark qr-mark">QR</span><span><strong>Product QR</strong><small>Link to Head Happy product</small></span>
+            </button>
+          </div>
+
+          <div class="preview-heading">
+            <span>Live preview</span>
+            <span>40 × 25 mm</span>
+          </div>
+          <div class="preview-stage">
+            <div id="labelPreview" class="label-preview" aria-label="Selected label preview"></div>
+          </div>
+        </section>
+
+        <section class="panel quick-panel">
+          <div class="panel-heading compact-heading">
+            <div>
+              <p class="step">QUICK LABELS</p>
+              <h2>Locations, notes and links</h2>
+            </div>
+          </div>
+
+          <button id="loadAllLocationsBtn" class="batch-button" type="button">
+            <span><strong>All store locations</strong><small>One Code 128 label for every unique Display, LOCATION and LOC2 code</small></span>
+            <span class="batch-arrow">+</span>
+          </button>
+
+          <details class="quick-details">
+            <summary>One location label</summary>
+            <form id="manualLocationForm" class="quick-form">
+              <label for="manualLocationCode">Location code</label>
+              <input id="manualLocationCode" placeholder="e.g. MC6-D1" autocomplete="off" />
+              <label for="manualLocationType">Location type</label>
+              <select id="manualLocationType">
+                <option value="LOCATION">LOCATION · quick stock</option>
+                <option value="DISPLAY">DISPLAY · customer display</option>
+                <option value="LOC2">LOC2 · stockroom</option>
+                <option value="STORE LOCATION">General store location</option>
+              </select>
+              <button class="secondary" type="submit">Add location label</button>
+            </form>
+          </details>
+
+          <details class="quick-details">
+            <summary>Information label</summary>
+            <form id="manualInfoForm" class="quick-form">
+              <label for="manualInfoTitle">Heading</label>
+              <input id="manualInfoTitle" maxlength="48" placeholder="e.g. Display item" autocomplete="off" />
+              <label for="manualInfoBody">Information</label>
+              <textarea id="manualInfoBody" maxlength="150" rows="3" placeholder="Short staff or customer-facing note"></textarea>
+              <button class="secondary" type="submit">Add information label</button>
+            </form>
+          </details>
+
+          <details class="quick-details">
+            <summary>Web link QR label</summary>
+            <form id="manualQrForm" class="quick-form">
+              <label for="manualQrTitle">Label</label>
+              <input id="manualQrTitle" maxlength="48" placeholder="e.g. Cleaning guide" autocomplete="off" />
+              <label for="manualQrUrl">Web address</label>
+              <input id="manualQrUrl" inputmode="url" placeholder="https://headhappy.co.uk/..." autocomplete="off" />
+              <button class="secondary" type="submit">Add web QR label</button>
+            </form>
+          </details>
+        </section>
+
+        <section class="panel print-panel">
+          <div>
+            <p class="step">3 · PRINT</p>
+            <h2><span id="totalLabelCount">0</span> physical labels</h2>
+            <p class="print-note">The printer window will open. Select any Zebra or other Windows label printer using <strong>40 × 25 mm</strong>, <strong>100% scale</strong>, <strong>no margins</strong> and <strong>no headers or footers</strong>.</p>
+          </div>
+          <button id="printCalibrationBtn" class="secondary full-width" type="button">Print 40 × 25 mm test label</button>
+          <button id="printQueueBtn" class="primary full-width" type="button" disabled>Print queue</button>
+        </section>
+      </aside>
+    </main>
+  </div>
+
+  <div id="printSheet" aria-hidden="true"></div>
+</body>
+</html>

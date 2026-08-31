@@ -216,6 +216,28 @@ https://your-render-app.onrender.com/api/shopify-stock.csv
 
 ---
 
+## Label Station
+
+Open the standalone label workstation at:
+
+```text
+/label-station.html
+```
+
+It supports fixed 40 x 25 mm templates for customer, product/location, staff, Code 128 barcode, product QR, location, information and manual web-link labels. Product labels use the existing barcode/SKU/name lookup. The print queue is saved in the browser until it is deliberately cleared.
+
+Unique physical location labels come from:
+
+```text
+GET /api/labels/locations
+```
+
+The location list is built from Display LOC, LOCATION and LOC2, strips a trailing `(LOD)`, ignores placeholder values and deduplicates physical codes.
+
+For each Windows label printer, save a 40 x 25 mm media preset with 100% scale, no margins and no browser headers or footers. The browser opens the normal print window, so Zebra and other printer brands can use their installed Windows drivers.
+
+---
+
 ## Future Upgrades
 
 Planned next steps:
@@ -225,3 +247,4 @@ Planned next steps:
 * Output `Product, Variant, SKU, Supplier, Department, Brand, RO, Stock, Location`.
 * Add Shopify sales endpoints for 7/30/90/180/365 day ranking.
 * Add controlled stock receiving/write-back once read-only exports are proven safe.
+

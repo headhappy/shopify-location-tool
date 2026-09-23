@@ -32,9 +32,9 @@ function baseRow(variant, product) {
     Vendor: product.vendor || "",
     Tags: tags.join("|"),
     ProductStatus: product.status || "",
-    DisplayLocation: product.displayLocMetafield?.value || "",
+    DisplayLocation: variant.displayLocMetafield?.value || "",
     ShelfLocation: variant.locationMetafield?.value || "",
-    LOC2: product.loc2Metafield?.value || "",
+    LOC2: variant.loc2Metafield?.value || "",
     VariantId: variant.id || "",
     ProductId: product.id || "",
     Price: variant.price || "",
@@ -49,11 +49,11 @@ async function stockRows(shopifyGraph, options = {}) {
         pageInfo { hasNextPage endCursor }
         nodes {
           id title sku barcode price inventoryQuantity
+          displayLocMetafield: metafield(namespace: "custom", key: "display_loc") { value }
           locationMetafield: metafield(namespace: "stock", key: "location") { value }
+          loc2Metafield: metafield(namespace: "custom", key: "location") { value }
           product {
             id title handle vendor status tags
-            displayLocMetafield: metafield(namespace: "custom", key: "display_loc") { value }
-            loc2Metafield: metafield(namespace: "custom", key: "location") { value }
           }
         }
       }
@@ -94,11 +94,11 @@ async function stockRowsByLocation(shopifyGraph, options = {}) {
         pageInfo { hasNextPage endCursor }
         nodes {
           id title sku barcode price inventoryQuantity
+          displayLocMetafield: metafield(namespace: "custom", key: "display_loc") { value }
           locationMetafield: metafield(namespace: "stock", key: "location") { value }
+          loc2Metafield: metafield(namespace: "custom", key: "location") { value }
           product {
             id title handle vendor status tags
-            displayLocMetafield: metafield(namespace: "custom", key: "display_loc") { value }
-            loc2Metafield: metafield(namespace: "custom", key: "location") { value }
           }
           inventoryItem {
             id tracked

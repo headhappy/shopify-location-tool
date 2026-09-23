@@ -1,5 +1,5 @@
 import { setTextMetafield } from "./shopify-client.js";
-import { expireLocationSearchCache, findLocationContents, findLocationMatches, listLocationLabels } from "./location-search.js";
+import { expireLocationSearchCache, findExactLocationContents, findLocationContents, findLocationMatches, listLocationLabels } from "./location-search.js";
 
 export function registerLocationUpdaterRoutes(app,{shopifyGraph}){
   app.post("/lookup-variant",async(req,res)=>{
@@ -39,6 +39,17 @@ export function registerLocationUpdaterRoutes(app,{shopifyGraph}){
     }catch(error){
       console.error(error);
       res.status(500).json({error:"Label location list failed",detail:error.message});
+    }
+  });
+
+  app.get("/api/labels/location-products",async(req,res)=>{
+    const location=String(req.query?.location ?? req.query?.search ?? "").trim();
+    if(!location) return res.status(400).json({error:"Location code required"});
+    try{
+      res.json(await findExactLocationContents(shopifyGraph,location));
+    }catch(error){
+      console.error(error);
+      res.status(500).json({error:"Location product list failed",detail:error.message});
     }
   });
 

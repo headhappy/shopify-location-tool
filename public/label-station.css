@@ -317,6 +317,60 @@ input:focus, select:focus, textarea:focus {
 
 .quick-panel { display: grid; gap: 8px; }
 .quick-panel .panel-heading { margin-bottom: 4px; }
+.location-products-box {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #a6f4c5;
+  border-radius: 12px;
+  padding: 12px;
+  background: #f6fef9;
+}
+.location-products-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.location-products-heading strong,
+.location-products-heading small { display: block; }
+.location-products-heading strong { color: #05603a; font-size: 14px; }
+.location-products-heading small { margin-top: 2px; color: #475467; font-size: 11px; line-height: 1.25; }
+.location-products-badge {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border-radius: 999px;
+  color: #05603a;
+  background: #d1fadf;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .08em;
+}
+.location-products-box > label,
+.location-products-actions label {
+  margin: 2px 0 0;
+  color: #475467;
+  font-size: 11px;
+  font-weight: 800;
+}
+.location-products-box select { min-height: 40px; padding: 8px 10px; font-size: 13px; }
+.location-products-meta {
+  min-height: 28px;
+  border-radius: 8px;
+  padding: 6px 8px;
+  color: #027a48;
+  background: #ecfdf3;
+  font-size: 11px;
+  font-weight: 750;
+}
+.location-products-actions {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 8px;
+  align-items: end;
+}
+.location-products-actions input { min-height: 40px; padding: 8px 10px; font-size: 13px; text-align: center; }
+.location-products-actions button { min-height: 40px; }
+
 .batch-button {
   display: flex;
   align-items: center;
@@ -477,6 +531,7 @@ input:focus, select:focus, textarea:focus {
 @media (max-width: 520px) {
   .search-form { grid-template-columns: 1fr; }
   .template-picker { grid-template-columns: 1fr; }
+  .location-products-actions { grid-template-columns: 1fr; }
   .template-option { min-height: 55px; }
   .result-row { grid-template-columns: 1fr; }
   .result-row .small-button { width: 100%; }

@@ -132,6 +132,31 @@ export async function findLocationContents(shopifyGraph,locationTerm){
   };
 }
 
+export async function findExactLocationContents(shopifyGraph,locationTerm){
+  const target=locationKey(locationTerm);
+  if(!target) return {location:String(locationTerm||""),count:0,rows:[],stockTotal:0,lodCount:0};
+
+  const rows=(await catalog(shopifyGraph)).map(item=>{
+    if(item.productStatus && item.productStatus!=="ACTIVE") return null;
+    const matches=[];
+    if(locationKey(item.currentDisplayLoc)===target) matches.push("DISPLAY");
+    if(locationKey(item.currentLocation)===target) matches.push("LOCATION");
+    if(locationKey(item.currentLoc2)===target) matches.push("LOC2");
+    return matches.length ? {...item,matches,lod:hasLod(item.currentDisplayLoc)} : null;
+  }).filter(Boolean);
+
+  rows.sort((a,b)=>`${a.productTitle} ${a.variantTitle} ${a.sku}`.localeCompare(`${b.productTitle} ${b.variantTitle} ${b.sku}`));
+
+  return {
+    location:String(locationTerm||"").trim(),
+    mode:"location_exact",
+    count:rows.length,
+    stockTotal:rows.reduce((sum,item)=>sum+Number(item.stock||0),0),
+    lodCount:rows.filter(item=>item.lod).length,
+    rows
+  };
+}
+
 export async function listLocationLabels(shopifyGraph){
   const locations=new Map();
   const typeOrder=["DISPLAY","LOCATION","LOC2"];

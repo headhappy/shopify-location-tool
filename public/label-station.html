@@ -111,6 +111,29 @@
             </div>
           </div>
 
+          <div class="location-products-box">
+            <div class="location-products-heading">
+              <div>
+                <strong>Products in one location</strong>
+                <small>Select an exact store location and add every mapped product to the print queue.</small>
+              </div>
+              <span class="location-products-badge">BATCH</span>
+            </div>
+            <label for="locationProductSelect">Store location</label>
+            <select id="locationProductSelect">
+              <option value="">Loading locations…</option>
+            </select>
+            <div id="locationProductMeta" class="location-products-meta">Loading location list…</div>
+            <div class="location-products-actions">
+              <div>
+                <label for="locationProductCopies">Copies per product</label>
+                <input id="locationProductCopies" type="number" min="1" max="500" value="1" inputmode="numeric" />
+              </div>
+              <button id="loadLocationProductsBtn" class="primary" type="button" disabled>Add every product</button>
+            </div>
+            <p class="helper">Every product mapped to the exact selected code is added using the active product label type. You can still change individual copy counts in the queue before printing.</p>
+          </div>
+
           <button id="loadAllLocationsBtn" class="batch-button" type="button">
             <span><strong>All store locations</strong><small>One Code 128 label for every unique Display, LOCATION and LOC2 code</small></span>
             <span class="batch-arrow">+</span>

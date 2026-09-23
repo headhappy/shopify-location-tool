@@ -43,6 +43,7 @@
     queue: loadQueue(),
     results: [],
     selectedQueueId: null,
+    locationCatalog: [],
   };
 
   const els = {
@@ -62,6 +63,10 @@
     preview: $("labelPreview"),
     printSheet: $("printSheet"),
     loadLocations: $("loadAllLocationsBtn"),
+    locationProductSelect: $("locationProductSelect"),
+    locationProductCopies: $("locationProductCopies"),
+    locationProductMeta: $("locationProductMeta"),
+    loadLocationProducts: $("loadLocationProductsBtn"),
   };
 
   function clean(value) {
@@ -356,12 +361,12 @@
     return { item: next, added: true };
   }
 
-  function addProduct(row, { render = true } = {}) {
+  function addProduct(row, { render = true, copies = 1 } = {}) {
     return addQueueItem({
       ...row,
       sourceType: "product",
       template: state.activeTemplate,
-      copies: 1,
+      copies: clampCopies(copies),
     }, { render });
   }
 
@@ -533,6 +538,83 @@
     }
   }
 
+  function locationCatalogLabel(location) {
+    const types = Array.isArray(location.types) && location.types.length ? location.types.join(" + ") : "STORE LOCATION";
+    const variants = Number(location.variantCount || 0);
+    return `${clean(location.code)} · ${types} · ${variants} product${variants === 1 ? "" : "s"}`;
+  }
+
+  function renderLocationProductMeta() {
+    const code = clean(els.locationProductSelect?.value);
+    const location = state.locationCatalog.find((row) => clean(row.code) === code);
+    if (!location) {
+      if (els.locationProductMeta) els.locationProductMeta.textContent = state.locationCatalog.length ? "Choose a location to see its mapped products." : "No locations loaded.";
+      if (els.loadLocationProducts) els.loadLocationProducts.disabled = true;
+      return;
+    }
+    const types = Array.isArray(location.types) && location.types.length ? location.types.join(" + ") : "STORE LOCATION";
+    const products = Number(location.variantCount || location.productCount || 0);
+    const stock = Number(location.stockTotal || 0);
+    els.locationProductMeta.textContent = `${types} · ${products} mapped product${products === 1 ? "" : "s"} · stock ${stock}`;
+    els.loadLocationProducts.disabled = false;
+  }
+
+  async function loadLocationCatalog() {
+    if (!els.locationProductSelect) return [];
+    els.locationProductSelect.disabled = true;
+    els.loadLocationProducts.disabled = true;
+    try {
+      const response = await fetch("/api/labels/locations");
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.detail || data.error || "Location list failed.");
+      const locations = Array.isArray(data.locations) ? data.locations : Array.isArray(data.rows) ? data.rows : [];
+      state.locationCatalog = locations.filter((row) => clean(row.code));
+      els.locationProductSelect.innerHTML = '<option value="">Choose a location…</option>' + state.locationCatalog
+        .map((location) => `<option value="${escapeHtml(clean(location.code))}">${escapeHtml(locationCatalogLabel(location))}</option>`)
+        .join("");
+      els.locationProductSelect.disabled = false;
+      renderLocationProductMeta();
+      return state.locationCatalog;
+    } catch (error) {
+      state.locationCatalog = [];
+      els.locationProductSelect.innerHTML = '<option value="">Could not load locations</option>';
+      els.locationProductMeta.textContent = error.message || "Could not load locations.";
+      setStatus(error.message || "Could not load store locations.", "error");
+      return [];
+    }
+  }
+
+  async function loadProductsFromLocation() {
+    const location = clean(els.locationProductSelect?.value);
+    if (!location) return setStatus("Choose a store location first.", "error");
+    const copies = clampCopies(els.locationProductCopies?.value || 1);
+    els.loadLocationProducts.disabled = true;
+    setStatus(`Loading every product in ${location}…`, "busy");
+    try {
+      const response = await fetch(`/api/labels/location-products?location=${encodeURIComponent(location)}`);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.detail || data.error || "Location product list failed.");
+      const rows = Array.isArray(data.rows) ? data.rows.map((row) => normaliseLookupRow(row, data)) : [];
+      if (!rows.length) throw new Error(`No active products are mapped exactly to ${location}.`);
+
+      let added = 0;
+      let increased = 0;
+      rows.forEach((row) => {
+        const result = addProduct(row, { copies, render: false });
+        result.added ? added += 1 : increased += 1;
+      });
+      commitQueue();
+      setStatus(
+        `Loaded ${rows.length} product${rows.length === 1 ? "" : "s"} from ${location} at ${copies} cop${copies === 1 ? "y" : "ies"} each${increased ? `; ${increased} already queued and increased` : ""}.`,
+        "ok"
+      );
+    } catch (error) {
+      setStatus(error.message || "Could not load products from this location.", "error");
+    } finally {
+      renderLocationProductMeta();
+    }
+  }
+
   async function loadAllLocations() {
     els.loadLocations.disabled = true;
     setStatus("Loading the unique store location codes…", "busy");
@@ -651,6 +733,11 @@
   els.headerPrint.addEventListener("click", () => printItems(state.queue));
   $("printCalibrationBtn").addEventListener("click", () => printItems([{ sourceType: "calibration", template: "calibration", copies: 1 }]));
   els.loadLocations.addEventListener("click", loadAllLocations);
+  els.locationProductSelect?.addEventListener("change", renderLocationProductMeta);
+  els.locationProductCopies?.addEventListener("change", () => {
+    els.locationProductCopies.value = String(clampCopies(els.locationProductCopies.value));
+  });
+  els.loadLocationProducts?.addEventListener("click", loadProductsFromLocation);
 
   $("manualLocationForm").addEventListener("submit", (event) => {
     event.preventDefault();
@@ -688,4 +775,5 @@
   if (state.queue.length) state.selectedQueueId = state.queue.at(-1).id;
   renderQueue();
   renderPreview();
+  loadLocationCatalog();
 })();

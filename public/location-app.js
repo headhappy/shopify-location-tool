@@ -172,7 +172,7 @@ async function saveChanges() {
 
   if (next.displayLoc !== original.displayLoc) {
     if (!next.displayLoc && original.displayLoc) return setStatus("Use Clear DISPLAY LOC to erase an existing value.", "error");
-    changes.push({ name:"DISPLAY LOC", url:"/update-display-location", body:{ productId:variant.productId, displayLocationValue:next.displayLoc } });
+    changes.push({ name:"DISPLAY LOC", url:"/update-display-location", body:{ variantId:variant.id, displayLocationValue:next.displayLoc } });
   }
   if (next.location !== original.location) {
     if (!next.location && original.location) return setStatus("Use Clear LOCATION to erase an existing value.", "error");
@@ -180,7 +180,7 @@ async function saveChanges() {
   }
   if (next.loc2 !== original.loc2) {
     if (!next.loc2 && original.loc2) return setStatus("Use Clear LOC2 to erase an existing value.", "error");
-    changes.push({ name:"LOC2", url:"/update-loc2", body:{ productId:variant.productId, loc2Value:next.loc2 } });
+    changes.push({ name:"LOC2", url:"/update-loc2", body:{ variantId:variant.id, loc2Value:next.loc2 } });
   }
   if (!changes.length) return setStatus("Nothing has changed.");
 
@@ -209,13 +209,13 @@ async function clearValue(kind) {
   setStatus(`Clearing ${label}…`);
   try {
     if (kind === "display") {
-      await postJson("/update-display-location", { productId:variant.productId, displayLocationValue:"" });
+      await postJson("/update-display-location", { variantId:variant.id, displayLocationValue:"" });
       variant.currentDisplayLoc = "";
     } else if (kind === "location") {
       await postJson("/update-location", { variantId:variant.id, locationValue:"" });
       variant.currentLocation = "";
     } else {
-      await postJson("/update-loc2", { productId:variant.productId, loc2Value:"" });
+      await postJson("/update-loc2", { variantId:variant.id, loc2Value:"" });
       variant.currentLoc2 = "";
     }
     showSelected(true);

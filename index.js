@@ -117,11 +117,11 @@ async function getVariantStockTotal({ search = "", tag = "", vendor = "", status
         edges {
           node {
             id title sku barcode price inventoryQuantity
+            displayLocMetafield: metafield(namespace: "custom", key: "display_loc") { value }
             locationMetafield: metafield(namespace: "stock", key: "location") { value }
+            loc2Metafield: metafield(namespace: "custom", key: "location") { value }
             product {
               id title handle vendor status tags
-              displayLocMetafield: metafield(namespace: "custom", key: "display_loc") { value }
-              loc2Metafield: metafield(namespace: "custom", key: "location") { value }
             }
           }
         }
@@ -152,9 +152,9 @@ async function getVariantStockTotal({ search = "", tag = "", vendor = "", status
         ProductStatus: product.status || "",
         Tracked: "",
         Available: Number(variant.inventoryQuantity ?? 0),
-        DisplayLocation: product.displayLocMetafield?.value || "",
+        DisplayLocation: variant.displayLocMetafield?.value || "",
         ShelfLocation: variant.locationMetafield?.value || "",
-        LOC2: product.loc2Metafield?.value || "",
+        LOC2: variant.loc2Metafield?.value || "",
         Location: "TOTAL",
         LocationId: "",
         InventoryItemId: "",
@@ -222,11 +222,11 @@ async function getVariantStockByLocation({ search = "", tag = "", vendor = "", l
         edges {
           node {
             id title sku barcode price inventoryQuantity
+            displayLocMetafield: metafield(namespace: "custom", key: "display_loc") { value }
             locationMetafield: metafield(namespace: "stock", key: "location") { value }
+            loc2Metafield: metafield(namespace: "custom", key: "location") { value }
             product {
               id title handle vendor status tags
-              displayLocMetafield: metafield(namespace: "custom", key: "display_loc") { value }
-              loc2Metafield: metafield(namespace: "custom", key: "location") { value }
             }
             inventoryItem {
               id tracked
@@ -267,9 +267,9 @@ async function getVariantStockByLocation({ search = "", tag = "", vendor = "", l
           ProductStatus: product.status || "",
           Tracked: variant.inventoryItem?.tracked ? "TRUE" : "FALSE",
           Available: availableFromInventoryLevel(level),
-          DisplayLocation: product.displayLocMetafield?.value || "",
+          DisplayLocation: variant.displayLocMetafield?.value || "",
           ShelfLocation: variant.locationMetafield?.value || "",
-          LOC2: product.loc2Metafield?.value || "",
+          LOC2: variant.loc2Metafield?.value || "",
           Location: loc.name || "",
           LocationId: loc.id || "",
           InventoryItemId: variant.inventoryItem?.id || "",
@@ -561,15 +561,15 @@ app.get("/health", (req, res) => {
     salesSource: "shopifyql.inventory.inventory_units_sold",
     yesterdaySalesEndpoint: "/api/shopify-yesterday-sales.json",
     stockLocationFields: {
-      productDisplayLocation: "DisplayLocation from product metafield custom.display_loc",
+      variantDisplayLocation: "DisplayLocation from variant metafield custom.display_loc",
       variantShelfLocation: "ShelfLocation from variant metafield stock.location",
-      productStockroomLocation: "LOC2 from product metafield custom.location",
+      variantStockroomLocation: "LOC2 from variant metafield custom.location",
     },
     updaterFeatures: {
       search: "Barcode, SKU, variant or product-title contains search",
-      displayLoc: "Product metafield custom.display_loc",
+      displayLoc: "Variant metafield custom.display_loc",
       location: "Variant metafield stock.location",
-      loc2: "Product metafield custom.location",
+      loc2: "Variant metafield custom.location",
       lod: "Stored as (LOD) suffix on Display LOC",
       displayLocEndpoint: "/update-display-loc",
       loc2Endpoint: "/update-loc2",
@@ -739,11 +739,11 @@ app.post("/lookup-variant", async (req, res) => {
               edges {
                 node {
                   id title sku barcode
+                  displayLocMetafield: metafield(namespace: "custom", key: "display_loc") { value }
                   locationMetafield: metafield(namespace: "stock", key: "location") { value }
+                  loc2Metafield: metafield(namespace: "custom", key: "location") { value }
                   product {
                     id title
-                    displayLocMetafield: metafield(namespace: "custom", key: "display_loc") { value }
-                    loc2Metafield: metafield(namespace: "custom", key: "location") { value }
                   }
                 }
               }
@@ -763,9 +763,9 @@ app.post("/lookup-variant", async (req, res) => {
             title: variantTitle ? `${v.product?.title || ""} – ${variantTitle}` : v.product?.title || "",
             productTitle: v.product?.title || "",
             variantTitle,
-            currentDisplayLoc: v.product?.displayLocMetafield?.value || "",
+            currentDisplayLoc: v.displayLocMetafield?.value || "",
             currentLocation: v.locationMetafield?.value || "",
-            currentLoc2: v.product?.loc2Metafield?.value || "",
+            currentLoc2: v.loc2Metafield?.value || "",
           };
         });
         if (hits.length) matchedBy = "barcode";
@@ -827,9 +827,9 @@ app.post("/update-location", async (req, res) => {
 });
 
 app.post("/update-display-loc", async (req, res) => {
-  const { productId, displayLocValue } = req.body;
-  if (!productId || displayLocValue === undefined) {
-    return res.status(400).json({ error: "productId & displayLocValue required" });
+  const { variantId, displayLocValue } = req.body;
+  if (!variantId || displayLocValue === undefined) {
+    return res.status(400).json({ error: "variantId & displayLocValue required" });
   }
 
   try {
@@ -843,7 +843,7 @@ app.post("/update-display-loc", async (req, res) => {
           value: $val
         }]) { userErrors { field message } }
       }`;
-    const result = await shopifyGraph(mutation, { id: productId, val: displayLocValue });
+    const result = await shopifyGraph(mutation, { id: variantId, val: displayLocValue });
     if (result.metafieldsSet.userErrors.length) throw new Error(result.metafieldsSet.userErrors[0].message);
     invalidateLookupCache();
     res.json({ success: true });
@@ -854,9 +854,9 @@ app.post("/update-display-loc", async (req, res) => {
 });
 
 app.post("/update-loc2", async (req, res) => {
-  const { productId, loc2Value } = req.body;
-  if (!productId || loc2Value === undefined) {
-    return res.status(400).json({ error: "productId & loc2Value required" });
+  const { variantId, loc2Value } = req.body;
+  if (!variantId || loc2Value === undefined) {
+    return res.status(400).json({ error: "variantId & loc2Value required" });
   }
 
   try {
@@ -872,7 +872,7 @@ app.post("/update-loc2", async (req, res) => {
           userErrors { field message }
         }
       }`;
-    const result = await shopifyGraph(mutation, { id: productId, val: loc2Value });
+    const result = await shopifyGraph(mutation, { id: variantId, val: loc2Value });
     if (result.metafieldsSet.userErrors.length) throw new Error(result.metafieldsSet.userErrors[0].message);
     invalidateLookupCache();
     res.json({ success: true });

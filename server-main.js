@@ -45,15 +45,15 @@ app.get("/health",(_req,res)=>res.json({
   salesSource:"shopifyql.inventory.inventory_units_sold",
   yesterdaySalesEndpoint:"/api/shopify-yesterday-sales.json",
   stockLocationFields:{
-    productDisplayLocation:"DisplayLocation from product metafield custom.display_loc",
+    variantDisplayLocation:"DisplayLocation from variant metafield custom.display_loc",
     variantQuickStockLocation:"ShelfLocation from variant metafield stock.location",
-    productStockroomLocation:"LOC2 from product metafield custom.location"
+    variantStockroomLocation:"LOC2 from variant metafield custom.location"
   },
   updaterFeatures:{
     search:"Barcode, SKU, or product-title contains search",
-    displayLocation:"Product metafield custom.display_loc",
+    displayLocation:"Variant metafield custom.display_loc",
     location:"Variant metafield stock.location",
-    loc2:"Product metafield custom.location",
+    loc2:"Variant metafield custom.location",
     displayLocationEndpoint:"/update-display-location",
     locationEndpoint:"/update-location",
     loc2Endpoint:"/update-loc2",

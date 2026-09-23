@@ -23,12 +23,7 @@ export function registerLocationUpdaterRoutes(app,{shopifyGraph}){
           productStatus:v.productStatus,
           currentDisplayLoc:v.currentDisplayLoc,
           currentLocation:v.currentLocation,
-          currentLoc2:v.currentLoc2,
-          legacyDisplayLoc:v.legacyDisplayLoc,
-          legacyLoc2:v.legacyLoc2,
-          displayInherited:v.displayInherited,
-          loc2Inherited:v.loc2Inherited,
-          hasOnlyDefaultVariant:v.hasOnlyDefaultVariant
+          currentLoc2:v.currentLoc2
         });
       }
       res.json({searchMode:result.mode,matchedBy:result.mode,variants:result.hits});

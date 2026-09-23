@@ -1,0 +1,8 @@
+/* Four independent locations fit inside the existing 40 x 25 mm stock. */
+.template-staff { grid-template-rows:4.4mm 1.9mm 2.8mm repeat(4,2.6mm); gap:.2mm; }
+.template-staff .staff-line { grid-template-columns:10mm minmax(0,1fr); }
+.template-staff .staff-line strong { font-size:1.65mm; }
+.location-products-box select{max-width:100%}
+.location-products-meta{overflow-wrap:anywhere}
+#refreshLocationsBtn{justify-self:start;font-size:12px}
+#appShell[aria-busy="true"] button,#appShell[aria-busy="true"] input,#appShell[aria-busy="true"] select,#appShell[aria-busy="true"] textarea{pointer-events:none;opacity:.6}

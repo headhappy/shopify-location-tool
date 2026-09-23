@@ -1,0 +1,33 @@
+name: Location regression and deployed read checks
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - run: npm install --ignore-scripts --no-audit --no-fund
+      - run: npm test
+  deployed-read-check:
+    needs: regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Verify Render pages and read-only Shopify endpoints
+        env:
+          EXPECTED_COMMIT: ${{ github.sha }}
+        run: node tests/deployed-smoke.mjs

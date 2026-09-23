@@ -106,9 +106,9 @@
       const tr=button.closest("tr");const row=lastRows.find(item=>item.id===tr?.dataset?.id);if(!row)return setStatus("Could not find that row after filtering.","error");
       const display=clean(tr.querySelector('[data-field="display"]')?.value);const location=clean(tr.querySelector('[data-field="location"]')?.value);const loc2=clean(tr.querySelector('[data-field="loc2"]')?.value);
       const jobs=[];
-      if(display&&display!==clean(row.currentDisplayLoc)){if(!row.productId)return setStatus("Missing product ID for Display LOC save.","error");jobs.push(()=>postJson("/update-display-loc",{productId:row.productId,displayLocValue:display},"Display LOC save failed"))}
+      if(display&&display!==clean(row.currentDisplayLoc)){if(!row.id)return setStatus("Missing variant ID for Display LOC save.","error");jobs.push(()=>postJson("/update-display-loc",{variantId:row.id,displayLocValue:display},"Display LOC save failed"))}
       if(location&&location!==clean(row.currentLocation)){if(!row.id)return setStatus("Missing variant ID for LOCATION save.","error");jobs.push(()=>postJson("/update-location",{variantId:row.id,locationValue:location},"LOCATION save failed"))}
-      if(loc2&&loc2!==clean(row.currentLoc2)){if(!row.productId)return setStatus("Missing product ID for LOC2 save.","error");jobs.push(()=>postJson("/update-loc2",{productId:row.productId,loc2Value:loc2},"LOC2 save failed"))}
+      if(loc2&&loc2!==clean(row.currentLoc2)){if(!row.id)return setStatus("Missing variant ID for LOC2 save.","error");jobs.push(()=>postJson("/update-loc2",{variantId:row.id,loc2Value:loc2},"LOC2 save failed"))}
       if(!jobs.length)return setStatus("No changed non-blank locations to save.","error");
       const selectedBefore=locationSelect.value||"";button.disabled=true;setStatus("Saving row…");
       try{for(const job of jobs)await job();setStatus("Saved row ✓ refreshing…","ok");await lookupLocation();if(selectedBefore){locationSelect.value=selectedBefore;if(locationSelect.value===selectedBefore)refreshFilteredView();}}

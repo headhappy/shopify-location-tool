@@ -4,23 +4,36 @@ let cache={ expiresAt:0,rows:[] };
 
 function row(variant,product=variant.product||{}){
   const variantTitle=variant.title && variant.title!=="Default Title" ? variant.title : "";
+  const variantDisplayLoc=variant.displayLoc?.value||"";
+  const variantLoc2=variant.loc2?.value||"";
+  const legacyDisplayLoc=product.legacyDisplayLoc?.value||"";
+  const legacyLoc2=product.legacyLoc2?.value||"";
+  const canUseLegacy=!!product.hasOnlyDefaultVariant;
+  const currentDisplayLoc=variantDisplayLoc || (canUseLegacy ? legacyDisplayLoc : "");
+  const currentLoc2=variantLoc2 || (canUseLegacy ? legacyLoc2 : "");
   return {
     id:variant.id||"", productId:product.id||"", sku:variant.sku||"", barcode:variant.barcode||"",
     productTitle:product.title||"", variantTitle,
     title:variantTitle ? `${product.title||""} – ${variantTitle}` : (product.title||variant.sku||variant.barcode||"Variant"),
     price:variant.price||"", stock:Number(variant.inventoryQuantity ?? 0),
     handle:product.handle||"", vendor:product.vendor||"", productStatus:product.status||"",
-    currentDisplayLoc:product.displayLoc?.value||"", currentLocation:variant.quickLoc?.value||"", currentLoc2:product.loc2?.value||"",
+    hasOnlyDefaultVariant:canUseLegacy,
+    currentDisplayLoc, currentLocation:variant.quickLoc?.value||"", currentLoc2,
+    legacyDisplayLoc, legacyLoc2,
+    displayInherited:!variantDisplayLoc && !!currentDisplayLoc,
+    loc2Inherited:!variantLoc2 && !!currentLoc2,
   };
 }
 
 const fields=`
   id title sku barcode price inventoryQuantity
+  displayLoc: metafield(namespace:"custom",key:"display_loc") { value }
   quickLoc: metafield(namespace:"stock",key:"location") { value }
+  loc2: metafield(namespace:"custom",key:"location") { value }
   product {
-    id title handle vendor status
-    displayLoc: metafield(namespace:"custom",key:"display_loc") { value }
-    loc2: metafield(namespace:"custom",key:"location") { value }
+    id title handle vendor status hasOnlyDefaultVariant
+    legacyDisplayLoc: metafield(namespace:"custom",key:"display_loc") { value }
+    legacyLoc2: metafield(namespace:"custom",key:"location") { value }
   }`;
 
 function escaped(value){ return String(value||"").trim().replace(/\\/g,"\\\\").replace(/"/g,'\\"'); }
@@ -65,7 +78,7 @@ async function exact(shopifyGraph,term){
 }
 
 async function indexed(shopifyGraph,term){
-  const query=`query($q:String!){products(first:50,query:$q,sortKey:TITLE){nodes{id title handle vendor status displayLoc:metafield(namespace:"custom",key:"display_loc"){value} loc2:metafield(namespace:"custom",key:"location"){value} variants(first:100){nodes{id title sku barcode price inventoryQuantity quickLoc:metafield(namespace:"stock",key:"location"){value}}}}}}`;
+  const query=`query($q:String!){products(first:50,query:$q,sortKey:TITLE){nodes{id title handle vendor status hasOnlyDefaultVariant legacyDisplayLoc:metafield(namespace:"custom",key:"display_loc"){value} legacyLoc2:metafield(namespace:"custom",key:"location"){value} variants(first:100){nodes{id title sku barcode price inventoryQuantity displayLoc:metafield(namespace:"custom",key:"display_loc"){value} quickLoc:metafield(namespace:"stock",key:"location"){value} loc2:metafield(namespace:"custom",key:"location"){value}}}}}}`;
   const data=await shopifyGraph(query,{q:String(term).trim()});
   const needle=normalise(term);
   return (data.products?.nodes||[]).filter(product=>normalise(product.title).includes(needle)).flatMap(product=>(product.variants?.nodes||[]).map(variant=>row(variant,product)));

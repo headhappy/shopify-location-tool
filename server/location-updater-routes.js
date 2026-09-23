@@ -23,7 +23,12 @@ export function registerLocationUpdaterRoutes(app,{shopifyGraph}){
           productStatus:v.productStatus,
           currentDisplayLoc:v.currentDisplayLoc,
           currentLocation:v.currentLocation,
-          currentLoc2:v.currentLoc2
+          currentLoc2:v.currentLoc2,
+          legacyDisplayLoc:v.legacyDisplayLoc,
+          legacyLoc2:v.legacyLoc2,
+          displayInherited:v.displayInherited,
+          loc2Inherited:v.loc2Inherited,
+          hasOnlyDefaultVariant:v.hasOnlyDefaultVariant
         });
       }
       res.json({searchMode:result.mode,matchedBy:result.mode,variants:result.hits});
@@ -76,11 +81,11 @@ export function registerLocationUpdaterRoutes(app,{shopifyGraph}){
   });
 
   const saveDisplayLocation=async(req,res)=>{
-    const productId=req.body?.productId;
+    const variantId=req.body?.variantId;
     const displayLocationValue=req.body?.displayLocationValue ?? req.body?.displayLocValue;
-    if(!productId || displayLocationValue===undefined) return res.status(400).json({error:"productId and display location value required"});
+    if(!variantId || displayLocationValue===undefined) return res.status(400).json({error:"variantId and display location value required. Refresh the location app before saving."});
     try{
-      await setTextMetafield(shopifyGraph,productId,"custom","display_loc",displayLocationValue);
+      await setTextMetafield(shopifyGraph,variantId,"custom","display_loc",displayLocationValue);
       expireLocationSearchCache();
       res.json({success:true,value:displayLocationValue});
     }catch(error){
@@ -100,9 +105,9 @@ export function registerLocationUpdaterRoutes(app,{shopifyGraph}){
   });
 
   app.post("/update-loc2",async(req,res)=>{
-    const {productId,loc2Value}=req.body;
-    if(!productId || loc2Value===undefined) return res.status(400).json({error:"productId & loc2Value required"});
-    try{await setTextMetafield(shopifyGraph,productId,"custom","location",loc2Value);expireLocationSearchCache();res.json({success:true});}
+    const {variantId,loc2Value}=req.body;
+    if(!variantId || loc2Value===undefined) return res.status(400).json({error:"variantId & loc2Value required. Refresh the location app before saving."});
+    try{await setTextMetafield(shopifyGraph,variantId,"custom","location",loc2Value);expireLocationSearchCache();res.json({success:true});}
     catch(error){res.status(500).json({error:"LOC2 save failed",detail:error.message});}
   });
 }

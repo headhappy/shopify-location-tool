@@ -1,0 +1,29 @@
+name: Scanner deployment diagnostic
+on:
+  push:
+    branches: [fix/scanner-preview]
+    paths: ['.github/workflows/scanner-deploy-diagnostics.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Read fixed public app URLs without changing data
+        shell: bash
+        run: |
+          node --input-type=module <<'JS'
+          const base='https://shopify-location-tool.onrender.com';
+          const nonce=Date.now();
+          await Promise.all(['/health?check='+nonce,'/camera.js','/camera.js?scanner=1.4.1','/camera.js?check='+nonce].map(async path=>{
+            try {
+              const response=await fetch(base+path,{headers:{'Cache-Control':'no-cache'},signal:AbortSignal.timeout(25000)});
+              const text=await response.text();
+              const headers=Object.fromEntries(['age','cache-control','etag','last-modified','cf-cache-status','server','date','x-render-origin-server'].map(key=>[key,response.headers.get(key)]));
+              let health;
+              if(path.startsWith('/health')){try{const h=JSON.parse(text);health={commit:h.commit,version:h.version,locationSchema:h.locationSchema};}catch{}}
+              console.log(JSON.stringify({path,status:response.status,bytes:text.length,headers,health,fixedCamera:text.includes("CAMERA_VERSION = '1.4.1'"),prefix:text.slice(0,90)}));
+            }catch(e){console.log(JSON.stringify({path,error:e.message}));}
+          }));
+          JS

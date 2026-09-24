@@ -47,7 +47,8 @@ export class Camera {
       try { reader.clear(); } catch { /* Video tracks are also released below. */ }
     }
     for (const track of tracks) track.stop();
-    for (const video of videos) video.srcObject = null;
+    // The library owns its video element. Do not reset srcObject: that emits
+    // an abort event to its throwing onabort handler even after a normal stop.
     if (box) {
       box.replaceChildren();
       box.style.display = previous?.display || '';
@@ -58,7 +59,7 @@ export class Camera {
   }
 
   stop() {
-    ++this.generation; // Invalidate callbacks immediately, even during startup.
+    ++this.generation;
     return this.enqueue(() => this.release());
   }
 
@@ -92,7 +93,6 @@ export class Camera {
               if (!continuous) {
                 const stoppedGeneration = generation + 1;
                 await this.stop();
-                // A later Scan/Stop must not apply a code to a different field.
                 if (this.generation !== stoppedGeneration) return;
               }
               await onCode(text);

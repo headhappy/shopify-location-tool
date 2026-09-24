@@ -1,0 +1,37 @@
+name: Real scanner browser regression
+on:
+  push:
+    branches: [main, fix/scanner-preview]
+    paths:
+      - 'public/**'
+      - 'tests/camera-browser.mjs'
+      - '.github/workflows/camera-browser.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  real-scanner:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Install app and test-only dependencies
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          npm install --no-save --package-lock=false --ignore-scripts --no-audit --no-fund playwright html5-qrcode@2.3.8
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Existing location and network tests
+        run: npm test
+      - name: Real camera-library layout, capture and decoder tests
+        run: node tests/camera-browser.mjs
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: scanner-browser-screenshots
+          path: test-results/
+          retention-days: 7
+          if-no-files-found: ignore

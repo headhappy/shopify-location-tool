@@ -17,7 +17,11 @@ jobs:
           package-manager-cache: false
       - run: npm install --ignore-scripts --no-audit --no-fund
       - run: npm test
+  # A live-site check cannot gate the deployment it is waiting for.
+  # Run this explicitly AFTER deploying, using Run workflow on main.
+  # Push CI continues to enforce regression tests and camera tests.
   deployed-read-check:
+    if: github.event_name == 'workflow_dispatch'
     needs: regression
     runs-on: ubuntu-latest
     timeout-minutes: 15

@@ -1,5 +1,6 @@
 // Read-only deployment checks: never sends a location-write or clear request.
 import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
 import {LOCATION_SCHEMA,LOCATION_FIELDS,locationKey} from '../public/location-fields.js';
 const base='https://shopify-location-tool.onrender.com';
 const expected=process.env.EXPECTED_COMMIT||'';
@@ -17,6 +18,10 @@ for(let attempt=0;attempt<15;attempt++){
 assert.ok(health,'Requested four-field release was not confirmed live.');
 assert.equal(health.updaterFeatures.displaySlots,2);assert.equal(health.updaterFeatures.productLocationFallback,false);
 console.log('PASS: deployed health reports two displays and variant-only ownership.');
+const cameraSource=await (await request('/camera.js?scanner=1.4.1')).text();
+assert.equal(cameraSource,await readFile(new URL('../public/camera.js',import.meta.url),'utf8'),'Deployed camera must match the tested source byte for byte');
+assert.match(cameraSource,/CAMERA_VERSION = '1\.4\.1'/);
+console.log('PASS: deployed camera helper matches the tested zero-width-preview fix byte for byte.');
 for(const path of ['/','/batch-scan.html','/location-viewer.html','/label-station.html']){
   const text=await (await request(path)).text();assert.match(text,/1\.4\.0/);assert.match(text,/type="module"/);
 }

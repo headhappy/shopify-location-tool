@@ -101,6 +101,12 @@ export class Camera {
           },
           () => {} // No code in this frame is normal; keep the camera open.
         );
+        // Html5Qrcode.start resolves before its video.play promise settles.
+        // Join playback before honouring a queued Stop: removing the video
+        // sooner interrupts the library's unhandled play promise.
+        const video = box.querySelector('video');
+        if (!video) throw new Error('The camera did not create a video preview.');
+        await video.play();
         if (generation !== this.generation) {
           await this.release();
           return;

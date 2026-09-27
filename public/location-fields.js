@@ -25,7 +25,7 @@ export function displayValue(base,lod) {
 }
 export function normaliseLookupRow(row,envelope={}) {
   const product=envelope.product||{};
-  const result={id:clean(row.id||row.variantId),productId:clean(row.productId||product.id),productTitle:clean(row.productTitle||envelope.productTitle||row.product_title||'Product'),variantTitle:clean(row.variantTitle??row.variant_title??row.title).replace(/^Default Title$/i,''),sku:clean(row.sku),barcode:clean(row.barcode),stock:Number(row.stock??row.inventoryQuantity??envelope.stock??0),price:clean(row.price??envelope.price),handle:clean(row.handle||envelope.handle||product.handle)};
+  const result={id:clean(row.id||row.variantId),productId:clean(row.productId||product.id),productTitle:clean(row.productTitle||envelope.productTitle||row.product_title||'Product'),variantTitle:clean(row.variantTitle??row.variant_title??row.title).replace(/^Default Title$/i,''),sku:clean(row.sku),barcode:clean(row.barcode),barcodes:[...new Set([...(Array.isArray(row.barcodes)?row.barcodes:[]),...(Array.isArray(envelope.barcodes)?envelope.barcodes:[]),...(Array.isArray(row?.barcodes?.nodes)?row.barcodes.nodes.map(x=>x?.value):[]),clean(row.barcode),clean(envelope.barcode)].map(clean).filter(Boolean))],stock:Number(row.stock??row.inventoryQuantity??envelope.stock??0),price:clean(row.price??envelope.price),handle:clean(row.handle||envelope.handle||product.handle)};
   for(const f of LOCATION_FIELDS) result[f.current]=clean(row[f.current]??row[f.alias]??envelope[f.current]);
   return result;
 }

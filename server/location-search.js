@@ -5,7 +5,10 @@ export const VARIANT_FIELDS = `id title sku barcode price inventoryQuantity
 let cache={expiresAt:0,rows:[]}, pending=null, revision=0;
 export function locationRow(v,p=v.product||{}) {
   const variantTitle=v.title&&v.title!=='Default Title'?v.title:'';
-  const row={id:v.id||'',productId:p.id||'',sku:v.sku||'',barcode:v.barcode||'',productTitle:p.title||'',variantTitle,title:variantTitle?`${p.title||''} – ${variantTitle}`:(p.title||v.sku||v.barcode||'Variant'),price:v.price||'',stock:Number(v.inventoryQuantity??0),handle:p.handle||'',vendor:p.vendor||'',productStatus:p.status||''};
+  const allBarcodes=(v.barcodes?.nodes||[]).map(x=>clean(x?.value)).filter(Boolean);
+  const primary=clean(v.barcode)||allBarcodes[0]||'';
+  const barcodes=[...new Set([primary,...allBarcodes].filter(Boolean))];
+  const row={id:v.id||'',productId:p.id||'',sku:v.sku||'',barcode:primary,barcodes,productTitle:p.title||'',variantTitle,title:variantTitle?`${p.title||''} – ${variantTitle}`:(p.title||v.sku||primary||'Variant'),price:v.price||'',stock:Number(v.inventoryQuantity??0),handle:p.handle||'',vendor:p.vendor||'',productStatus:p.status||''};
   for(const f of LOCATION_FIELDS) row[f.current]=v[f.alias]?.value||'';
   return row;
 }
@@ -19,16 +22,27 @@ async function catalog(graph){
   const work=(async()=>{const rows=[];let after=null,pages=0;do{const data=await graph(`query LocationCatalog($first:Int!,$after:String){productVariants(first:$first,after:$after,sortKey:TITLE){pageInfo{hasNextPage endCursor}nodes{${VARIANT_FIELDS}}}}`,{first:100,after});const c=data.productVariants;if(!c?.pageInfo||!Array.isArray(c.nodes))throw new Error('Incomplete Shopify location catalogue response.');rows.push(...c.nodes.map(v=>locationRow(v)));const next=c.pageInfo.hasNextPage?c.pageInfo.endCursor:null;if(c.pageInfo.hasNextPage&&(!next||next===after))throw new Error('Location catalogue pagination did not advance.');after=next;if(++pages>200)throw new Error('Location catalogue pagination safety stop.');}while(after);if(started===revision)cache={expiresAt:Date.now()+600000,rows};return rows;})();
   pending=work;try{return await work;}finally{if(pending===work)pending=null;}
 }
-export async function findLocationMatches(graph,term){
+export async function findLocationMatches(graph,term,barcodeGraph=graph){
   const raw=clean(term);if(!raw)return {mode:'empty',hits:[]};
   const candidates=barcodeCandidates(raw),escaped=x=>x.replace(/\\/g,'\\\\').replace(/"/g,'\\"');
   const q=candidates.flatMap(x=>[`barcode:"${escaped(x)}"`,`sku:"${escaped(x)}"`]).join(' OR ');
-  const data=await graph(`query ExactLocationProduct($q:String!){productVariants(first:50,query:$q){pageInfo{hasNextPage endCursor}nodes{${VARIANT_FIELDS}}}}`,{q});
+  // Shopify 2026-10: barcode filter matches ANY barcode on the variant.
+  // Read the complete barcode set so client-side exact-match safety also recognises aliases.
+  const barcodeFields=`id title sku barcode barcodes(first:20){nodes{value type}} price inventoryQuantity
+    ${LOCATION_FIELDS.map(f=>`${f.alias}:metafield(namespace:"${f.namespace}",key:"${f.key}"){value}`).join('\n')}
+    product{id title handle vendor status}`;
+  let data;
+  try {
+    data=await barcodeGraph(`query ExactLocationProduct($q:String!){productVariants(first:50,query:$q){pageInfo{hasNextPage endCursor}nodes{${barcodeFields}}}}`,{q});
+  } catch(error) {
+    // Keep product-name / SKU lookup available if the newer barcode endpoint is temporarily unavailable.
+    data=await graph(`query ExactLocationProductFallback($q:String!){productVariants(first:50,query:$q){pageInfo{hasNextPage endCursor}nodes{${VARIANT_FIELDS}}}}`,{q});
+  }
   const needles=new Set(candidates.map(norm));
-  const exact=(data.productVariants?.nodes||[]).map(v=>locationRow(v)).filter(v=>norm(v.sku)===norm(raw)||needles.has(norm(v.barcode)));
+  const exact=(data.productVariants?.nodes||[]).map(v=>locationRow(v)).filter(v=>norm(v.sku)===norm(raw)||(v.barcodes||[]).some(code=>needles.has(norm(code))));
   if(exact.length&&!data.productVariants?.pageInfo?.hasNextPage)return {mode:'barcode_or_sku_normalised',hits:exact};
   const needle=norm(raw),all=await catalog(graph);
-  const exactAll=all.filter(v=>norm(v.sku)===needle||needles.has(norm(v.barcode)));
+  const exactAll=all.filter(v=>norm(v.sku)===needle||(v.barcodes||[v.barcode]).some(code=>needles.has(norm(code))));
   if(exactAll.length)return {mode:'barcode_or_sku_normalised',hits:exactAll};
   const hits=all.filter(v=>[v.productTitle,v.variantTitle,v.sku].some(x=>norm(x).includes(needle)));
   return {mode:'catalog_normalised',hits:hits.slice(0,250),truncated:hits.length>250};

@@ -1,12 +1,12 @@
 import { setTextMetafield } from './shopify-client.js';
 import { LOCATION_FIELDS, LOCATION_SCHEMA, clean, isVariantId, physicalLocation } from '../public/location-fields.js';
 import { expireLocationSearchCache, findLocationMatches, findLocationContents, findExactLocationContents, listLocationLabels, labelVariants } from './location-search.js';
-export function registerLocationUpdaterRoutes(app,{shopifyGraph}){
+export function registerLocationUpdaterRoutes(app,{shopifyGraph,barcodeGraph=shopifyGraph}){
   const error=(res,label,e)=>res.status(500).json({error:label,detail:e.message});
   const noCache=res=>res.setHeader('Cache-Control','no-store');
   app.post('/lookup-variant',async(req,res)=>{
     noCache(res);const search=clean(req.body?.search??req.body?.barcode);if(!search)return res.status(400).json({error:'Barcode, SKU or product name required.'});
-    try{const result=await findLocationMatches(shopifyGraph,search);if(!result.hits.length)return res.status(404).json({error:'No product or variant matches.'});const common={schema:LOCATION_SCHEMA,searchMode:result.mode,matchedBy:result.mode,truncated:!!result.truncated};if(result.hits.length!==1)return res.json({...common,variants:result.hits});const v=result.hits[0];res.json({...common,...v,variant:{id:v.id,sku:v.sku,barcode:v.barcode,title:v.variantTitle,price:v.price,inventoryQuantity:v.stock,stock:v.stock},product:{id:v.productId,handle:v.handle,vendor:v.vendor,status:v.productStatus}});}catch(e){error(res,'Lookup failed',e);}
+    try{const result=await findLocationMatches(shopifyGraph,search,barcodeGraph);if(!result.hits.length)return res.status(404).json({error:'No product or variant matches.'});const common={schema:LOCATION_SCHEMA,searchMode:result.mode,matchedBy:result.mode,truncated:!!result.truncated};if(result.hits.length!==1)return res.json({...common,variants:result.hits});const v=result.hits[0];res.json({...common,...v,variant:{id:v.id,sku:v.sku,barcode:v.barcode,barcodes:v.barcodes||[],title:v.variantTitle,price:v.price,inventoryQuantity:v.stock,stock:v.stock},product:{id:v.productId,handle:v.handle,vendor:v.vendor,status:v.productStatus}});}catch(e){error(res,'Lookup failed',e);}
   });
   app.get('/api/labels/locations',async(req,res)=>{noCache(res);try{if(req.query?.refresh==='1')expireLocationSearchCache();res.json(await listLocationLabels(shopifyGraph));}catch(e){error(res,'Label location list failed',e);}});
   app.get('/api/labels/location-products',async(req,res)=>{noCache(res);const location=clean(req.query?.location??req.query?.search);if(!physicalLocation(location))return res.status(400).json({error:'Physical location code required.'});try{res.json(await findExactLocationContents(shopifyGraph,location));}catch(e){error(res,'Location product list failed',e);}});

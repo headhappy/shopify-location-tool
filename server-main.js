@@ -5,9 +5,12 @@ import { registerStockRoutes } from './server/stock-routes.js';
 import { registerSalesRoutes } from './server/sales-routes.js';
 import { registerLocationUpdaterRoutes } from './server/location-updater-routes.js';
 import { LOCATION_FIELDS, LOCATION_SCHEMA } from './public/location-fields.js';
+import { registerBundleModule } from './server/bundle-module.js';
 dotenv.config();
 const app=express(),PORT=process.env.PORT||3000,SHOP=process.env.SHOPIFY_SHOP,TOKEN=process.env.SHOPIFY_ACCESS_TOKEN,API=process.env.SHOPIFY_API_VERSION||'2024-07',BARCODE_API=process.env.SHOPIFY_BARCODE_API_VERSION||'2026-10',SHOPIFYQL_API=process.env.SHOPIFYQL_API_VERSION||'2025-10';
 if(!SHOP||!TOKEN){console.error('Set SHOPIFY_SHOP & SHOPIFY_ACCESS_TOKEN in Render environment variables.');process.exit(1);}
+// Mount protected bundle routes before the legacy CORS and body-parser middleware.
+registerBundleModule(app);
 app.use((req,res,next)=>{res.setHeader('Access-Control-Allow-Origin','*');res.setHeader('Access-Control-Allow-Methods','GET,POST,OPTIONS');res.setHeader('Access-Control-Allow-Headers','Content-Type, X-Requested-With');res.setHeader('Access-Control-Max-Age','86400');if(req.method==='OPTIONS')return res.sendStatus(204);next();});
 app.use(express.json({limit:'20mb'}));
 app.use('/vendor/bwip-js',express.static('node_modules/bwip-js/dist'));

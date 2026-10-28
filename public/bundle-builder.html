@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'self'"
+    />
+    <title>Bundle Builder · Head Happy</title>
+    <link rel="stylesheet" href="/bundle-builder.css" />
+    <script type="module" src="/bundle-builder.js"></script>
+  </head>
+  <body>
+    <header>
+      <a class="brand" href="/"
+        >HEAD HAPPY<span>Stock Control + Locations</span></a
+      >
+      <nav aria-label="Application">
+        <a href="/">Locations</a><a href="/label-station.html">Label Station</a
+        ><a href="/api/shopify-stock.csv">Stock export</a
+        ><a href="/bundle-builder.html" aria-current="page">Bundle Builder</a>
+      </nav>
+    </header>
+    <main>
+      <div class="title-row">
+        <div>
+          <p class="eyebrow">PHYSICAL KIT PLANNING</p>
+          <h1>Bundle Builder</h1>
+          <p>One recipe. Flexible components. Exact choices.</p>
+        </div>
+        <span class="badge">PREVIEW RELEASE</span>
+      </div>
+      <aside class="notice">
+        <strong>Plan your assembly. Stock stays unchanged.</strong
+        ><span
+          >Recipes and previews are saved. This release cannot assemble,
+          reserve, deduct or reverse inventory.</span
+        >
+      </aside>
+      <p id="status" role="status" aria-live="polite"></p>
+      <section id="login-panel" class="card narrow">
+        <h2>Staff sign in</h2>
+        <p>Use your individual Bundle Builder account.</p>
+        <form id="login-form">
+          <label
+            >Staff ID<input
+              name="username"
+              autocomplete="username"
+              required
+              maxlength="60" /></label
+          ><label
+            >Password<input
+              name="password"
+              type="password"
+              autocomplete="current-password"
+              required
+              maxlength="256" /></label
+          ><button type="submit">Sign in</button>
+        </form>
+      </section>
+      <div id="workspace" hidden>
+        <div class="workspace-bar">
+          <div class="tabs" role="group" aria-label="Bundle Builder sections">
+            <button type="button" data-tab="assembly" aria-pressed="true">
+              Assembly preview</button
+            ><button type="button" data-tab="recipes" aria-pressed="false">
+              Recipes</button
+            ><button type="button" data-tab="history" aria-pressed="false">
+              History & export
+            </button>
+          </div>
+          <div>
+            <span id="staff-name"></span>
+            <button id="logout" class="quiet" type="button">Sign out</button>
+          </div>
+        </div>
+        <section id="assembly-panel">
+          <div class="card">
+            <div class="section-title">
+              <span class="step">1</span>
+              <div>
+                <h2>Choose the kit</h2>
+                <p>
+                  Select a recipe, finished colour and physical inventory
+                  location.
+                </p>
+              </div>
+            </div>
+            <div class="grid">
+              <label>Recipe<select id="assembly-recipe"></select></label
+              ><label
+                >Finished variant<select id="assembly-finished"></select></label
+              ><label
+                >Shopify inventory location<select
+                  id="assembly-location"
+                ></select></label
+              ><label
+                >Finished quantity<input
+                  id="assembly-quantity"
+                  type="number"
+                  min="1"
+                  max="10000"
+                  value="1"
+                  step="1"
+              /></label>
+            </div>
+            <button id="resolve" type="button">Load eligible components</button>
+          </div>
+          <div id="components-panel" class="card" hidden>
+            <div class="section-title">
+              <span class="step">2</span>
+              <div>
+                <h2>Choose what goes in</h2>
+                <p>
+                  Choose the actual colour or scan its barcode with your
+                  scanner. Quantities below include every kit.
+                </p>
+              </div>
+            </div>
+            <div id="assembly-components"></div>
+            <label class="check"
+              ><input id="components-confirmed" type="checkbox" />I have checked
+              every actual component and quantity.</label
+            ><button id="preview" type="button">Save assembly preview</button>
+          </div>
+          <div id="preview-panel" class="card" hidden></div>
+        </section>
+        <section id="recipes-panel" hidden>
+          <div class="card">
+            <div class="section-title">
+              <div>
+                <h2>Saved recipes</h2>
+                <p>
+                  Managers define eligible components. Staff choose the actual
+                  items for each preview.
+                </p>
+              </div>
+            </div>
+            <div id="recipe-list"></div>
+            <div id="manager-actions" class="actions" hidden>
+              <button id="new-recipe" type="button">New recipe</button
+              ><button id="crown-template" type="button" class="secondary">
+                Start with Crown Rolling Kit
+              </button>
+            </div>
+          </div>
+          <form id="recipe-editor" class="card" hidden>
+            <h2 id="editor-title">New recipe</h2>
+            <label
+              >Recipe name<input id="recipe-name" required maxlength="160"
+            /></label>
+            <h3>Finished variants</h3>
+            <p class="hint">
+              Add the existing Shopify variants that this recipe produces.
+            </p>
+            <div id="finished-chips" class="chips"></div>
+            <button id="add-finished" type="button" class="secondary">
+              Find finished variant</button
+            ><label
+              >Who manages this finished stock?<select id="ownership">
+                <option value="unconfirmed">Not yet confirmed</option>
+                <option value="physical">
+                  Physical kits — excluded from Bundles.app and other stock
+                  automation
+                </option>
+                <option value="external">
+                  Bundles.app or another stock automation
+                </option>
+              </select></label
+            >
+            <p class="hint">
+              This records the manager's declaration. It cannot inspect or
+              change Bundles.app configuration.
+            </p>
+            <h3>Component groups</h3>
+            <div id="recipe-components"></div>
+            <button id="add-component" type="button" class="secondary">
+              Add component group
+            </button>
+            <div class="actions">
+              <button type="submit">Validate & save recipe</button
+              ><button id="cancel-edit" type="button" class="quiet">
+                Cancel
+              </button>
+            </div>
+          </form>
+        </section>
+        <section id="history-panel" hidden>
+          <div class="card">
+            <h2>Preview history</h2>
+            <p>
+              Saved snapshots record the staff member, recipe version, location,
+              costs and exact component IDs. Every entry here is a preview;
+              applied inventory adjustments are zero.
+            </p>
+            <div class="actions">
+              <button id="refresh-history" type="button" class="secondary">
+                Refresh history</button
+              ><a class="button" href="/api/bundles/previews.csv">Export CSV</a>
+            </div>
+            <p class="hint">
+              CSV exports the full preview history for Microsoft Access. It is a
+              planning record, not an inventory adjustment import.
+            </p>
+            <div id="history-list"></div>
+            <button id="older-history" type="button" class="quiet" hidden>
+              Load older previews
+            </button>
+          </div>
+          <div id="history-detail" class="card" hidden></div>
+        </section>
+      </div>
+    </main>
+    <dialog id="picker">
+      <form method="dialog">
+        <button class="close quiet" aria-label="Close variant search">
+          Close
+        </button>
+      </form>
+      <h2 id="picker-title">Find a variant</h2>
+      <form id="picker-search">
+        <label
+          >SKU, barcode, name, parent product ID or variant ID<input
+            id="picker-query"
+            required
+            maxlength="100"
+            autocomplete="off" /></label
+        ><button type="submit">Search</button>
+      </form>
+      <p id="picker-status" role="status"></p>
+      <div id="picker-results"></div>
+    </dialog>
+  </body>
+</html>

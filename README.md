@@ -1,5 +1,14 @@
 # Head Happy Stock Control + Locations
 
+## Bundle Builder (preview release)
+
+The existing app now includes `/bundle-builder.html` for flexible recipes and
+location-specific assembly previews. It supports exact SKUs, parent products,
+SKU prefixes and restricted variant groups, with a Crown Rolling Kit starter.
+Staff authentication and PostgreSQL storage are required. The module is disabled
+by default and **cannot change Shopify inventory**. See
+[setup, permissions, testing and the future transaction stage](docs/bundle-builder.md).
+
 This is Head Happy's Shopify admin bridge for two connected jobs:
 
 1. **Locations** — scan a product barcode, scan/type a shelf location, and write the location to the variant metafield `stock.location`.

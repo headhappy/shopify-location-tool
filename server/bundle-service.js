@@ -35,6 +35,10 @@ export function normalizeRecipe(input) {
     "Add 1 to 30 component groups.",
   );
   const components = input.components.map((c, index) => {
+    requireValue(
+      c && typeof c === "object",
+      "Each component must be an object.",
+    );
     const id = shortText(c.id || `component-${index + 1}`, "Component ID", 60);
     requireValue(
       /^[a-zA-Z0-9_-]+$/.test(id),
@@ -138,7 +142,7 @@ function costUnits(amount) {
 const decimal = (value) => (value / 10000).toFixed(4);
 
 export function createBundleService({ catalog, store }) {
-  async function validateForSave(input) {
+  async function validateForSave(input, previous = null) {
     const recipe = normalizeRecipe(input);
     const finished = await catalog.nodes(recipe.finishedVariantIds);
     requireValue(
@@ -148,6 +152,16 @@ export function createBundleService({ catalog, store }) {
       422,
     );
     for (const component of recipe.components) {
+      // Preserve the server's pinned identity on ordinary edits. An unchanged SKU
+      // must not silently start referring to a replacement Shopify variant.
+      const original = previous?.components.find((c) => c.id === component.id);
+      if (
+        component.rule.type === "exact_sku" &&
+        original?.rule.type === "exact_sku" &&
+        original.rule.value === component.rule.value
+      ) {
+        component.rule.variantId = original.rule.variantId;
+      }
       const candidates = await catalog.rule(component.rule);
       requireValue(
         candidates.length > 0,
@@ -207,7 +221,12 @@ export function createBundleService({ catalog, store }) {
         candidates: candidates.map(variantSummary),
       });
     }
-    return { location, finished: variantSummary(finished), components };
+    return {
+      recipeVersion: recipe.version,
+      location,
+      finished: variantSummary(finished),
+      components,
+    };
   }
   return {
     validateForSave,
@@ -281,10 +300,16 @@ export function createBundleService({ catalog, store }) {
         "Select one actual variant per component group.",
       );
       const selections = input.selections
-        .map((s) => ({
-          componentId: shortText(s.componentId, "Component ID", 60),
-          variantId: gid(s.variantId, "ProductVariant"),
-        }))
+        .map((s) => {
+          requireValue(
+            s && typeof s === "object",
+            "Each selection must be an object.",
+          );
+          return {
+            componentId: shortText(s.componentId, "Component ID", 60),
+            variantId: gid(s.variantId, "ProductVariant"),
+          };
+        })
         .sort((a, b) => a.componentId.localeCompare(b.componentId));
       requireValue(
         new Set(selections.map((s) => s.componentId)).size ===

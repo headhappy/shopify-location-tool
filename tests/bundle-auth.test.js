@@ -191,6 +191,22 @@ test("recipe routes enforce optimistic versions and preview rejects stale recipe
     ).response.status,
     409,
   );
+  const input = previewInput(r);
+  assert.equal(
+    (
+      await c.request(`/recipes/${r.id}/resolve`, {
+        method: "POST",
+        body: input,
+      })
+    ).response.status,
+    409,
+  );
+  const resolved = await c.request(`/recipes/${r.id}/resolve`, {
+    method: "POST",
+    body: { ...input, recipeVersion: 2 },
+  });
+  assert.equal(resolved.response.status, 200);
+  assert.equal(resolved.data.recipeVersion, 2);
 });
 test("expired, revoked, password-rotated and removed staff sessions fail closed", async (t) => {
   const c = await apiFixture(t);

@@ -36,7 +36,7 @@ module's recipe/preview API is protected now.
 
 ## Setup for review or a later approved deployment
 
-No deployment is part of this change. The module's API is disabled by default.
+The module's API in the existing app is disabled by default.
 The static page shows setup guidance until an administrator configures it.
 
 1. Install with `npm ci` (Node 22 or newer).
@@ -113,7 +113,8 @@ read-only staging smoke check after configuration.
 
 - **Exact SKU**: case-sensitive and must resolve to exactly one Shopify variant.
   The saved rule also pins its stable variant GID. SKU reassignment fails until a
-  manager explicitly revalidates/saves the recipe; it never silently switches stock.
+  manager changes the rule or replaces the component group; an ordinary edit keeps
+  the server's existing variant pin, regardless of a client's supplied pin.
 - **Parent product**: a product GID or numeric product ID; all non-archived variants
   are resolved afresh, so new colours qualify automatically, except explicit exclusions.
 - **Prefix**: literal letters/numbers/underscore/hyphen, with an optional final `*`.
@@ -209,4 +210,32 @@ Phase 3 is not implemented here. Before authorising it, design and test:
 7. Mocked partial-failure tests followed by a separately approved one-kit Black Crown
    pilot. Verify every exact component decrement and exactly one finished increment.
 
-There is no merge, Render deployment or live inventory write in this development stage.
+No merge or live inventory write is required to test this release.
+
+## Isolated Render test service
+
+Deploy the PR branch `codex/bundle-builder-preview` as a separate Node web service.
+Use `npm ci --omit=dev --ignore-scripts --no-audit --no-fund` for the build and
+`npm run start:bundle-preview` to start. Set `NODE_ENV=production`, the existing
+`SHOPIFY_SHOP` and `SHOPIFY_ACCESS_TOKEN`, `BUNDLE_DATABASE_URL` to a separate private
+PostgreSQL database, and `BUNDLE_STAFF_USERS` to individual account hashes. This
+entry point uses Render's `RENDER_EXTERNAL_URL` for the origin unless explicitly
+overridden by `BUNDLE_APP_ORIGIN`.
+
+The test entry point runs the repeatable migration before listening, because free
+Render services have no pre-deploy hook. It refuses to start with invalid credentials
+or unavailable storage. `/health` checks PostgreSQL and reports the deployed commit
+and `inventoryWritesEnabled: false`. Only builder assets and its protected API are
+served; no legacy mutation routes are mounted. Navigation to the existing location,
+label and stock tools opens their original live service.
+
+The Shopify transport accepts only the four reviewed query constants. Mutations and
+unreviewed queries fail before any network call. There is no inventory-write flag.
+Component resolution, preview and recipe edits all reject stale recipe versions.
+
+Use a separate PostgreSQL 16 instance in the same region, disable public database
+access, and keep its URL in Render's private environment. A free database has no
+backups and expires after 30 days; export records or upgrade before expiry. Do not
+use it as the permanent assembly ledger. Keep test-service auto-deploy disabled
+and deploy reviewed commits deliberately. This does not modify the production
+Location app or merge the PR.

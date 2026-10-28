@@ -197,7 +197,13 @@ export function createBundleRouter({
           req.body.expectedVersion > 0,
         "Recipe version is required.",
       );
-      const recipe = await service.validateForSave(req.body.recipe);
+      const previous = await store.recipe(req.params.id);
+      requireValue(
+        previous.version === req.body.expectedVersion,
+        "Recipe changed in another session. Reload it before saving.",
+        409,
+      );
+      const recipe = await service.validateForSave(req.body.recipe, previous);
       res.json({
         recipe: await store.saveRecipe(
           recipe,
@@ -210,15 +216,21 @@ export function createBundleRouter({
   );
   router.post(
     "/recipes/:id/resolve",
-    run(async (req, res) =>
+    run(async (req, res) => {
+      const recipe = await store.recipe(req.params.id);
+      requireValue(
+        req.body.recipeVersion === recipe.version,
+        "Recipe changed. Reload recipes before selecting components.",
+        409,
+      );
       res.json(
         await service.resolve(
-          await store.recipe(req.params.id),
+          recipe,
           req.body.finishedVariantId,
           req.body.locationId,
         ),
-      ),
-    ),
+      );
+    }),
   );
   router.post(
     "/recipes/:id/preview",
@@ -273,12 +285,9 @@ export function createBundleRouter({
   router.all(
     ["/assemblies", "/assemblies/*", "/reversals", "/reconcile"],
     (_req, res) =>
-      res
-        .status(403)
-        .json({
-          error:
-            "Inventory changes are not implemented in this preview release.",
-        }),
+      res.status(403).json({
+        error: "Inventory changes are not implemented in this preview release.",
+      }),
   );
   router.use((_req, res) =>
     res.status(404).json({ error: "Bundle endpoint not found." }),
@@ -297,18 +306,16 @@ export function createBundleRouter({
             ? 400
             : 503;
     if (status === 429) res.set("Retry-After", "600");
-    res
-      .status(status)
-      .json({
-        error:
-          error instanceof BundleError
-            ? error.message
-            : status === 400
-              ? "Invalid JSON request."
-              : status === 413
-                ? "Request is too large."
-                : "Bundle data is unavailable. Check database setup and Shopify read permissions, then retry.",
-      });
+    res.status(status).json({
+      error:
+        error instanceof BundleError
+          ? error.message
+          : status === 400
+            ? "Invalid JSON request."
+            : status === 413
+              ? "Request is too large."
+              : "Bundle data is unavailable. Check database setup and Shopify read permissions, then retry.",
+    });
   });
   return router;
 }

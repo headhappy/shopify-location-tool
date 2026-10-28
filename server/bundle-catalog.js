@@ -26,7 +26,25 @@ const stockArgs = (locationId) => ({
   withStock: Boolean(locationId),
 });
 
-export function createBundleCatalog(graph) {
+export function readOnlyBundleGraph(transport) {
+  const allowed = new Set([
+    BUNDLE_VARIANTS_QUERY,
+    BUNDLE_NODES_QUERY,
+    BUNDLE_LOCATIONS_QUERY,
+    BUNDLE_SHOP_QUERY,
+  ]);
+  return (query, variables) => {
+    requireValue(
+      allowed.has(query),
+      "This builder only permits its reviewed Shopify read operations.",
+      403,
+    );
+    return transport(query, variables);
+  };
+}
+
+export function createBundleCatalog(transport) {
+  const graph = readOnlyBundleGraph(transport);
   async function pages(query, variables, key, max = 5000) {
     const result = [],
       cursors = new Set();

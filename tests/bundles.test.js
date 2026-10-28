@@ -15,6 +15,7 @@ import {
   previewCursor,
 } from "../server/bundle-store.js";
 import { previewsCsv } from "../server/bundle-routes.js";
+import { readOnlyBundleGraph } from "../server/bundle-catalog.js";
 import {
   setup,
   savedCrown,
@@ -392,4 +393,44 @@ test("generated Shopify operations are read-only and request location-specific q
     /inventoryLevel\(locationId: \$locationId\)/,
   );
   assert.match(BUNDLE_NODES_QUERY, /unitCost/);
+});
+
+test("an ordinary recipe edit cannot silently rebind a reassigned exact SKU", async (t) => {
+  const c = await setup(t),
+    recipe = await savedCrown(c);
+  c.rows.find((v) => v.id === vid(401)).id = vid(999);
+  const edited = structuredClone(recipe);
+  edited.name = "Only renamed";
+  // Even omitting or forging the browser's pin cannot override the stored ID.
+  delete edited.components[2].rule.variantId;
+  await assert.rejects(
+    () => c.service.validateForSave(edited, recipe),
+    /different variant/,
+  );
+  edited.components[2].rule.variantId = vid(999);
+  await assert.rejects(
+    () => c.service.validateForSave(edited, recipe),
+    /different variant/,
+  );
+});
+
+test("the bundle transport refuses mutations and unreviewed queries before reaching Shopify", async () => {
+  let calls = 0;
+  const graph = readOnlyBundleGraph(async () => {
+    calls++;
+    return {};
+  });
+  assert.throws(
+    () =>
+      graph(
+        "mutation { inventoryAdjustQuantities { userErrors { message } } }",
+      ),
+    /reviewed Shopify read/,
+  );
+  assert.throws(
+    () => graph("query { customers(first: 10) { nodes { id } } }"),
+    /reviewed Shopify read/,
+  );
+  await graph(BUNDLE_SHOP_QUERY);
+  assert.equal(calls, 1);
 });

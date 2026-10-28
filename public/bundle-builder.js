@@ -197,6 +197,7 @@ $("resolve").addEventListener("click", () =>
     if (!Number.isInteger(quantity) || quantity < 1 || quantity > 10000)
       throw new Error("Choose a whole quantity from 1 to 10,000.");
     const resolved = await post(`/recipes/${recipe.id}/resolve`, {
+      recipeVersion: recipe.version,
       finishedVariantId: $("assembly-finished").value,
       locationId: $("assembly-location").value,
     });

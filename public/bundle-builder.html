@@ -28,17 +28,44 @@
         <div>
           <p class="eyebrow">PHYSICAL KIT PLANNING</p>
           <h1>Bundle Builder</h1>
-          <p>One recipe. Flexible components. Exact choices.</p>
+          <p>Plan a kit, choose its contents and save a test.</p>
         </div>
-        <span class="badge">PREVIEW RELEASE</span>
+        <span class="badge">TEST MODE</span>
       </div>
       <aside class="notice">
-        <strong>Plan your assembly. Stock stays unchanged.</strong
+        <strong>Test safely. Shopify stock stays unchanged.</strong
         ><span
-          >Recipes and previews are saved. This release cannot assemble,
-          reserve, deduct or reverse inventory.</span
+          >Your recipes and test previews are saved in this app. Saving a test
+          does not create a Shopify product or order, reserve stock or change
+          any inventory.</span
         >
       </aside>
+      <section class="card start-guide" aria-labelledby="start-heading">
+        <h2 id="start-heading">Start here</h2>
+        <p>Try one kit first. Use the same recipe again for your next test.</p>
+        <ol class="start-steps">
+          <li><strong>Choose a kit</strong><span>Sign in, open Test a kit and choose
+            a kit recipe, completed kit colour and store. Start with 1 kit.</span></li>
+          <li><strong>Choose what goes in</strong><span>Click Show component choices.
+            Choose or scan the actual items, then check their quantities.</span></li>
+          <li><strong>Save and review</strong><span>Click Save test preview. Review
+            the costs and stock checks. Find it again in Saved tests &amp; export.</span></li>
+        </ol>
+        <details>
+          <summary>Where does the kit exist, and how do colours work?</summary>
+          <p>The completed kit is an existing product and SKU in Shopify, such as
+            Crown Rolling Kit / Black. A recipe links to that kit and describes
+            its contents. Your saved tests live only in this app; they do not
+            record a completed assembly in Shopify.</p>
+          <p>One recipe can allow every colour of a component product. You do not
+            need a separate recipe for each combination. Choose the actual colour
+            used so its stock and cost can be checked, even when all colours have
+            the same selling price.</p>
+          <p>You can reuse a recipe for many batches. The number of kits you could
+            make depends on the available component stock at your chosen store.
+            Test mode does not reserve that stock.</p>
+        </details>
+      </section>
       <p id="status" role="status" aria-live="polite"></p>
       <section id="login-panel" class="card narrow">
         <h2>Staff sign in</h2>
@@ -64,11 +91,11 @@
         <div class="workspace-bar">
           <div class="tabs" role="group" aria-label="Bundle Builder sections">
             <button type="button" data-tab="assembly" aria-pressed="true">
-              Assembly preview</button
+              Test a kit</button
             ><button type="button" data-tab="recipes" aria-pressed="false">
-              Recipes</button
+              Kit recipes</button
             ><button type="button" data-tab="history" aria-pressed="false">
-              History & export
+              Saved tests &amp; export
             </button>
           </div>
           <div>
@@ -83,21 +110,21 @@
               <div>
                 <h2>Choose the kit</h2>
                 <p>
-                  Select a recipe, finished colour and physical inventory
-                  location.
+                  Choose the existing Shopify kit you want to test and the store
+                  whose stock you want to check.
                 </p>
               </div>
             </div>
             <div class="grid">
-              <label>Recipe<select id="assembly-recipe"></select></label
+              <label>Kit recipe<select id="assembly-recipe"></select></label
               ><label
-                >Finished variant<select id="assembly-finished"></select></label
+                >Completed kit colour<select id="assembly-finished"></select></label
               ><label
-                >Shopify inventory location<select
+                >Store<select
                   id="assembly-location"
                 ></select></label
               ><label
-                >Finished quantity<input
+                >Number of kits<input
                   id="assembly-quantity"
                   type="number"
                   min="1"
@@ -106,7 +133,9 @@
                   step="1"
               /></label>
             </div>
-            <button id="resolve" type="button">Load eligible components</button>
+            <p class="hint">Every kit in this test uses the same component choices.
+              For a different colour mix, save another test with the same recipe.</p>
+            <button id="resolve" type="button">Show component choices</button>
           </div>
           <div id="components-panel" class="card" hidden>
             <div class="section-title">
@@ -123,7 +152,7 @@
             <label class="check"
               ><input id="components-confirmed" type="checkbox" />I have checked
               every actual component and quantity.</label
-            ><button id="preview" type="button">Save assembly preview</button>
+            ><button id="preview" type="button">Save test preview</button>
           </div>
           <div id="preview-panel" class="card" hidden></div>
         </section>
@@ -131,10 +160,10 @@
           <div class="card">
             <div class="section-title">
               <div>
-                <h2>Saved recipes</h2>
+                <h2>Saved kit recipes</h2>
                 <p>
-                  Managers define eligible components. Staff choose the actual
-                  items for each preview.
+                  A manager sets which items are allowed. Staff reuse the recipe
+                  and choose the actual items for each test.
                 </p>
               </div>
             </div>
@@ -151,13 +180,14 @@
             <label
               >Recipe name<input id="recipe-name" required maxlength="160"
             /></label>
-            <h3>Finished variants</h3>
+            <h3>Completed kits in Shopify</h3>
             <p class="hint">
-              Add the existing Shopify variants that this recipe produces.
+              Choose the existing kit products and colours this recipe is for.
+              This does not create products or change their stock in Shopify.
             </p>
             <div id="finished-chips" class="chips"></div>
             <button id="add-finished" type="button" class="secondary">
-              Find finished variant</button
+              Find completed kit</button
             ><label
               >Who manages this finished stock?<select id="ownership">
                 <option value="unconfirmed">Not yet confirmed</option>
@@ -174,13 +204,17 @@
               This records the manager's declaration. It cannot inspect or
               change Bundles.app configuration.
             </p>
-            <h3>Component groups</h3>
+            <h3>What goes in each kit</h3>
+            <p class="hint">For interchangeable colours, choose All variants of
+              one product. This includes that product's variants without adding
+              them one by one. Use a specific SKU or a selected list when only
+              certain items belong in this kit.</p>
             <div id="recipe-components"></div>
             <button id="add-component" type="button" class="secondary">
-              Add component group
+              Add component
             </button>
             <div class="actions">
-              <button type="submit">Validate & save recipe</button
+              <button type="submit">Check &amp; save recipe</button
               ><button id="cancel-edit" type="button" class="quiet">
                 Cancel
               </button>
@@ -189,15 +223,15 @@
         </section>
         <section id="history-panel" hidden>
           <div class="card">
-            <h2>Preview history</h2>
+            <h2>Saved test previews</h2>
             <p>
-              Saved snapshots record the staff member, recipe version, location,
-              costs and exact component IDs. Every entry here is a preview;
-              applied inventory adjustments are zero.
+              Each test records who saved it, the kit recipe, store, quantities,
+              costs and actual items chosen. These records are saved in this app,
+              not in Shopify. No stock has been added, reserved or deducted.
             </p>
             <div class="actions">
               <button id="refresh-history" type="button" class="secondary">
-                Refresh history</button
+                Refresh saved tests</button
               ><a class="button" href="/api/bundles/previews.csv">Export CSV</a>
             </div>
             <p class="hint">
@@ -206,7 +240,7 @@
             </p>
             <div id="history-list"></div>
             <button id="older-history" type="button" class="quiet" hidden>
-              Load older previews
+              Load older tests
             </button>
           </div>
           <div id="history-detail" class="card" hidden></div>

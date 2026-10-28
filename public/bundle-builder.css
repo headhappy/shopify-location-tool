@@ -136,6 +136,42 @@ p {
   max-width: 430px;
   margin: 35px auto;
 }
+.start-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+  padding-left: 22px;
+  margin: 18px 0;
+}
+.start-steps li {
+  padding-left: 3px;
+  padding-right: 12px;
+}
+.start-steps li::marker {
+  color: var(--green);
+  font-weight: 750;
+}
+.start-steps strong,
+.start-steps span {
+  display: block;
+}
+.start-steps span {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 5px;
+}
+.start-guide details {
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+  font-size: 14px;
+}
+.start-guide summary {
+  cursor: pointer;
+  font-weight: 650;
+}
+.start-guide details p {
+  margin: 12px 0 0;
+}
 label {
   display: block;
   font-size: 13px;
@@ -428,6 +464,10 @@ select:focus-visible {
   outline: 3px solid #9dba76;
   outline-offset: 3px;
 }
+summary:focus-visible {
+  outline: 3px solid #9dba76;
+  outline-offset: 3px;
+}
 [hidden] {
   display: none !important;
 }
@@ -465,7 +505,8 @@ select:focus-visible {
     padding: 20px;
   }
   .grid,
-  .component .grid {
+  .component .grid,
+  .start-steps {
     grid-template-columns: 1fr;
   }
   .metrics {

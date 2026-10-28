@@ -41,7 +41,7 @@ try {
   await page.getByLabel("Staff ID", { exact: true }).fill(manager.id);
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await page.getByRole("button", { name: "Recipes", exact: true }).click();
+  await page.getByRole("button", { name: "Kit recipes", exact: true }).click();
   await page
     .getByRole("button", { name: "Start with Crown Rolling Kit" })
     .click();
@@ -51,12 +51,12 @@ try {
   await page
     .getByLabel("Who manages this finished stock?")
     .selectOption("physical");
-  await page.getByRole("button", { name: "Validate & save recipe" }).click();
+  await page.getByRole("button", { name: "Check & save recipe" }).click();
   await page.waitForFunction(() =>
     document.getElementById("status").textContent.includes("version 1"),
   );
   await page
-    .getByRole("button", { name: "Assembly preview", exact: true })
+    .getByRole("button", { name: "Test a kit", exact: true })
     .click();
   await page.locator("#assembly-finished").selectOption(vid(101));
   await page.locator("#assembly-location").selectOption(locationId);
@@ -107,7 +107,7 @@ try {
   assert.equal(await page.locator("#components-panel").isHidden(), true);
   // History is readable and exporting uses the actual authenticated server route.
   await page
-    .getByRole("button", { name: "History & export", exact: true })
+    .getByRole("button", { name: "Saved tests & export", exact: true })
     .click();
   await page.locator(".history-row").waitFor();
   const downloadPromise = page.waitForEvent("download");
@@ -130,7 +130,7 @@ try {
   }
   await page.setViewportSize({ width: 1440, height: 1100 });
   // Test saving a generic recipe through the product picker, not just the template.
-  await page.getByRole("button", { name: "Recipes", exact: true }).click();
+  await page.getByRole("button", { name: "Kit recipes", exact: true }).click();
   await page.locator("#new-recipe").click();
   await page.locator("#recipe-name").fill("Custom assorted kit");
   await page.locator("#add-finished").click();
@@ -144,9 +144,9 @@ try {
   await component
     .getByLabel("Component name", { exact: true })
     .fill("Assorted grinder");
-  await component.getByLabel("Eligibility rule").selectOption("product");
+  await component.getByLabel("Which items are allowed?").selectOption("product");
   await component.getByLabel("Parent product ID").fill("8327686553754");
-  await page.getByRole("button", { name: "Validate & save recipe" }).click();
+  await page.getByRole("button", { name: "Check & save recipe" }).click();
   await page.waitForFunction(() =>
     document
       .getElementById("status")

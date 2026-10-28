@@ -106,7 +106,7 @@ async function loadRecipes() {
   fill(
     $("assembly-recipe"),
     state.recipes.map((r) => [r.id, r.name]),
-    "Choose a recipe",
+    "Choose a kit recipe",
   );
   if (state.recipes.some((r) => r.id === old)) $("assembly-recipe").value = old;
   changeRecipe();
@@ -118,7 +118,7 @@ function changeRecipe() {
   fill(
     $("assembly-finished"),
     (recipe?.finishedVariantIds || []).map((id) => [id, labelFor(id)]),
-    "Choose a finished variant",
+    "Choose the completed kit colour",
   );
 }
 async function enter(session) {
@@ -135,13 +135,13 @@ async function enter(session) {
   fill(
     $("assembly-location"),
     catalog.locations.map((l) => [l.id, l.name]),
-    "Choose a location",
+    "Choose a store",
   );
   await loadRecipes();
   status(
     state.recipes.length
-      ? "Ready. Choose a recipe to plan an assembly."
-      : "No recipes yet. A manager can create one in Recipes.",
+      ? "Ready to test. Choose a kit recipe; start with 1 kit."
+      : "No recipes yet. A manager can create one in Kit recipes.",
   );
 }
 $("login-form").addEventListener("submit", (event) => {
@@ -191,11 +191,11 @@ $("resolve").addEventListener("click", () =>
       !$("assembly-location").value
     )
       throw new Error(
-        "Choose a recipe, finished variant and inventory location.",
+        "Choose a kit recipe, completed kit colour and store.",
       );
     const quantity = Number($("assembly-quantity").value);
     if (!Number.isInteger(quantity) || quantity < 1 || quantity > 10000)
-      throw new Error("Choose a whole quantity from 1 to 10,000.");
+      throw new Error("Enter a whole number of kits from 1 to 10,000.");
     const resolved = await post(`/recipes/${recipe.id}/resolve`, {
       recipeVersion: recipe.version,
       finishedVariantId: $("assembly-finished").value,
@@ -206,7 +206,7 @@ $("resolve").addEventListener("click", () =>
     state.resolvedRecipe = recipe;
     renderComponents(quantity);
     $("components-panel").hidden = false;
-    status("Choose the exact components, then confirm the quantities.");
+    status("Choose the actual items, check the quantities, then save your test preview.");
   }, $("resolve")),
 );
 function renderComponents(quantity) {
@@ -225,7 +225,7 @@ function renderComponents(quantity) {
         v.id,
         `${v.sku} · ${v.title} · ${v.available ?? "?"} available${v.cost ? ` · ${v.cost.amount} ${v.cost.currencyCode} each` : " · cost missing"}`,
       ]),
-      "Choose actual variant",
+      "Choose the item / colour used",
     );
     if (group.candidates.length === 1) select.value = group.candidates[0].id;
     select.addEventListener("change", () => {
@@ -264,7 +264,7 @@ function renderComponents(quantity) {
       card.append(
         el(
           "p",
-          "This component is locked to the matching finished colour.",
+          "This item must match the completed kit colour.",
           "hint",
         ),
       );
@@ -293,7 +293,7 @@ $("preview").addEventListener("click", () =>
     );
     if (generation !== state.generation) return;
     renderPreview(preview);
-    status("Preview saved. No inventory changed.");
+    status("Test saved in Saved tests & export. Shopify stock is unchanged.");
     $("preview-panel").scrollIntoView({ behavior: "smooth", block: "start" });
   }, $("preview")),
 );
@@ -309,12 +309,14 @@ function renderPreview(p, target = "preview-panel") {
   panel.replaceChildren();
   panel.hidden = false;
   panel.append(
-    el("span", "SAVED · PREVIEW ONLY", "badge"),
+    el("span", "SAVED TEST · STOCK UNCHANGED", "badge"),
     el("h2", `${p.quantity} × ${p.finished.sku}`),
     el(
       "p",
       `${p.recipeName} · ${p.location.name} · ${new Date(p.createdAt).toLocaleString("en-GB")}`,
     ),
+    el("p", `Existing Shopify kit: ${p.finished.productTitle} / ${p.finished.title} · SKU ${p.finished.sku}`),
+    el("p", "This test is saved in Saved tests & export in this app. It has not created a product, order or stock adjustment in Shopify.", "hint"),
   );
   const metrics = el("div", undefined, "metrics");
   for (const [title, value] of [
@@ -337,12 +339,12 @@ function renderPreview(p, target = "preview-panel") {
     head = el("thead"),
     row = el("tr");
   [
-    "Component / exact variant",
+    "Item / colour used",
     "Quantity",
     "Available",
     "Unit cost",
     "Total cost",
-    "Proposed stock change",
+    "Stock change if assembled (not applied)",
   ].forEach((t) => row.append(el("th", t)));
   head.append(row);
   table.append(head);
@@ -369,7 +371,7 @@ function renderPreview(p, target = "preview-panel") {
   panel.append(
     el(
       "p",
-      `Finished stock: ${p.finished.available ?? "unknown"} available; proposed addition +${p.quantity}. Applied adjustments: 0.`,
+      `Current completed kit stock: ${p.finished.available ?? "unknown"}. This test plans ${p.quantity} kit(s); none have been added to Shopify. Applied adjustments: 0.`,
       `hint`,
     ),
   );
@@ -378,8 +380,8 @@ function renderPreview(p, target = "preview-panel") {
     el(
       "strong",
       p.blockers.length
-        ? "Resolve before a future physical assembly"
-        : "Current preview checks passed",
+        ? "Things to check before making real kits"
+        : "Test checks passed — stock is still unchanged",
     ),
   );
   const list = el("ul");
@@ -441,7 +443,7 @@ function renderRecipes() {
       el("strong", recipe.name),
       el(
         "p",
-        `${recipe.components.length} component groups · ${recipe.finishedVariantIds.length} finished variants · version ${recipe.version}`,
+        `${recipe.components.length} components · ${recipe.finishedVariantIds.length} completed kit choices · version ${recipe.version}`,
       ),
     );
     row.append(text);
@@ -548,10 +550,10 @@ function renderEditorComponent(c, index) {
   box.append(grid);
   const type = el("select");
   fill(type, [
-    ["exact_sku", "Exact SKU"],
-    ["product", "Any variant of a parent product"],
-    ["prefix", "SKU prefix"],
-    ["group", "Restricted variant group"],
+    ["exact_sku", "One specific SKU"],
+    ["product", "All variants of one product (any colour)"],
+    ["prefix", "SKUs starting with a code"],
+    ["group", "Only items I select"],
   ]);
   type.value = c.rule.type;
   type.addEventListener("change", () => {
@@ -565,7 +567,9 @@ function renderEditorComponent(c, index) {
     c.bindings = {};
     renderEditor();
   });
-  box.append(field("Eligibility rule", type));
+  box.append(field("Which items are allowed?", type));
+  if (c.rule.type === "product")
+    box.append(el("p", "Find the product using any of its colours. All its variants are included, except any exclusions or colour matches below. Each chosen item's own stock and cost are checked.", "hint"));
   if (c.rule.type === "group") {
     box.append(
       el(
@@ -648,8 +652,8 @@ function renderEditorComponent(c, index) {
   );
   const mode = el("select");
   fill(mode, [
-    ["any", "Any eligible variant (assorted / interchangeable)"],
-    ["by_finished", "Require a matching component for each finished variant"],
+    ["any", "Any allowed colour / item"],
+    ["by_finished", "Match this item to the completed kit colour"],
   ]);
   mode.value = c.bindingMode || "any";
   mode.addEventListener("change", () => {
@@ -658,7 +662,7 @@ function renderEditorComponent(c, index) {
     c.bindings ||= {};
     renderEditor();
   });
-  box.append(field("Finished-colour matching", mode));
+  box.append(field("Does this item need to match the kit colour?", mode));
   if (c.bindingMode === "by_finished")
     for (const finished of state.draft.finishedVariantIds) {
       const binding = el("div", undefined, "binding");
@@ -716,7 +720,7 @@ $("crown-template").addEventListener("click", () =>
   }, $("crown-template")),
 );
 $("add-finished").addEventListener("click", () =>
-  pick("Choose finished variant", (v) => {
+  pick("Choose completed kit", (v) => {
     syncDraft();
     if (!state.draft.finishedVariantIds.includes(v.id))
       state.draft.finishedVariantIds.push(v.id);

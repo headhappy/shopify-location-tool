@@ -1,5 +1,5 @@
 import {LOCATION_FIELDS as fields,clean,escapeHtml as esc,lookupRows,jsonRequest,physicalLocation} from './location-fields.js';
-import {Camera} from './camera.js';
+import {Camera} from './camera.js?v=1.4.2';
 const $=id=>document.getElementById(id),camera=new Camera(),state={scanning:false,processing:false,queue:[],seen:new Set(),saved:0,skipped:0,failed:0};
 $('targetFields').innerHTML=fields.map(f=>`<label class="target-card"><input type="radio" name="target" value="${f.name}" ${f.name==='location'?'checked':''}><span>${f.label}<small class="hint" style="display:block">Variant: ${f.namespace}.${f.key}</small></span></label>`).join('');
 const target=()=>fields.find(f=>f.name===document.querySelector('[name=target]:checked').value);

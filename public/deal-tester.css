@@ -1,0 +1,24 @@
+.till-layout { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(270px, 1fr); gap: 20px; }
+.till-layout .card { margin-top: 0; min-width: 0; }
+.scan-row { display: flex; align-items: stretch; gap: 10px; margin-bottom: 12px; }
+.scan-row input { margin: 0; }
+.receipt { align-self: start; background: #fafff6; }
+.progress { padding: 0; list-style: none; }
+.progress li { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.basket-line { display: flex; gap: 12px; align-items: center; padding: 15px 0; border-bottom: 1px solid var(--line); }
+.basket-line .item-info { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.basket-line small { display: block; color: var(--muted); }
+.basket-line button { padding: 8px 12px; }
+.total-row { display: flex; justify-content: space-between; gap: 10px; margin: 10px 0; }
+.grand-total { font-size: 24px; font-weight: 800; border-top: 2px solid var(--green); padding-top: 12px; }
+.warning { padding: 12px; background: #fff3dd; color: #6a4309; border-radius: 6px; font-size: 14px; }
+details { margin-top: 20px; }
+summary { cursor: pointer; font-weight: 650; }
+details p { margin-top: 12px; }
+.choice-row { display: flex; gap: 8px; align-items: end; }
+.choice-row label { flex: 1; min-width: 0; }
+.choice-row button { margin-bottom: 6px; }
+#queue-status { font-size: 13px; min-height: 1.5em; }
+#status:empty { display: none; }
+@media (max-width: 760px) { .till-layout { grid-template-columns: 1fr; gap: 0; } .title-row { align-items: start; } .title-row .badge { white-space: normal; max-width: 100px; } }
+@media (max-width: 400px) { .card { padding: 16px; } main { padding: 0 14px; } .choice-row { flex-wrap: wrap; } .choice-row label { flex-basis: 100%; } }

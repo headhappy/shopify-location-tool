@@ -153,6 +153,40 @@ try {
       .textContent.includes("Saved Custom assorted kit"),
   );
   assert.equal((await ctx.store.listRecipes()).length, 2);
+  // The new till simulator uses the existing session and never saves an assembly.
+  await page.getByRole("link", { name: "Scan a deal · test" }).click();
+  await page.locator("#workspace").waitFor({ state: "visible" });
+  const crown = (await ctx.store.listRecipes()).find((r) => r.name.includes("Crown"));
+  await page.locator("#deal").selectOption(crown.id);
+  await page.locator("#location").selectOption(locationId);
+  await page.getByRole("button", { name: "Start scanning" }).click();
+  await page.locator("#till").waitFor({ state: "visible" });
+  // Submit quickly: the scanner queue must preserve every unit without racing.
+  for (const sku of ["RB_RC_M3", "GRINDER_4", "PAPK_RDY", "PAPR_RDY_A1"]) {
+    await page.locator("#scan").fill(sku);
+    await page.locator("#scan").press("Enter");
+  }
+  await page.waitForFunction(() => document.getElementById("result-title").textContent.includes("1 complete deal"));
+  assert.match(await page.locator("#totals").textContent(), /Test total£14\.99/);
+  assert.equal(await page.locator("#basket .basket-line").count(), 4);
+  await page.getByRole("button", { name: "Remove one PAPK_RDY", exact: true }).click();
+  await page.waitForFunction(() => document.getElementById("result-title").textContent === "Keep scanning…");
+  assert.match(await page.locator("#totals").textContent(), /Test total£44\.97/);
+  await page.getByText("No scanner? Choose an item", { exact: true }).click();
+  await page.getByRole("button", { name: "Add Randy's Gold papers", exact: true }).click();
+  await page.waitForFunction(() => document.getElementById("result-title").textContent.includes("1 complete deal"));
+  await page.locator("#scan").fill("DOES-NOT-EXIST");
+  await page.locator("#scan").press("Enter");
+  await page.waitForFunction(() => document.getElementById("status").textContent.includes("not found"));
+  assert.equal(await page.locator("#basket .basket-line").count(), 4);
+  for (const width of [1440, 390, 320]) {
+    await page.setViewportSize({ width, height: 1000 });
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `Deal page fits ${width}px`);
+    await page.screenshot({ path: `test-results/deal-${width}.png`, fullPage: true });
+  }
+  assert.equal((await ctx.store.listPreviews()).length, 1);
+  await page.getByRole("button", { name: "Clear basket" }).click();
+  await page.waitForFunction(() => document.getElementById("result-title").textContent === "Scan your first item");
   await page.locator("#logout").click();
   await page.locator("#login-panel").waitFor({ state: "visible" });
   assert.deepEqual(errors, []);

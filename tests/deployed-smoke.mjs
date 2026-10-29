@@ -18,9 +18,10 @@ for(let attempt=0;attempt<15;attempt++){
 assert.ok(health,'Requested four-field release was not confirmed live.');
 assert.equal(health.updaterFeatures.displaySlots,2);assert.equal(health.updaterFeatures.productLocationFallback,false);
 console.log('PASS: deployed health reports two displays and variant-only ownership.');
-const cameraSource=await (await request('/camera.js?scanner=1.4.1')).text();
+const cameraSource=await (await request('/camera.js?scanner=1.4.2')).text();
 assert.equal(cameraSource,await readFile(new URL('../public/camera.js',import.meta.url),'utf8'),'Deployed camera must match the tested source byte for byte');
-assert.match(cameraSource,/CAMERA_VERSION = '1\.4\.1'/);
+assert.match(cameraSource,/CAMERA_VERSION = '1\.4\.2'/);
+assert.equal(await (await request('/camera-controls.js?v=1.4.2')).text(), await readFile(new URL('../public/camera-controls.js', import.meta.url),'utf8'));
 console.log('PASS: deployed camera helper matches the tested zero-width-preview fix byte for byte.');
 for(const path of ['/','/batch-scan.html','/location-viewer.html','/label-station.html']){
   const text=await (await request(path)).text();assert.match(text,/1\.4\.0/);assert.match(text,/type="module"/);

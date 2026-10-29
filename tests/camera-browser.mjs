@@ -42,7 +42,7 @@ await mkdir('test-results',{recursive:true});
 const browser=await chromium.launch({headless:true,args:['--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream']});
 let checks=0;
 const pass=message=>{checks++;console.log(`PASS ${checks}: ${message}`);};
-async function open(viewport={width:390,height:844},pagePath='/__camera.html') {
+async function open(viewport={width:390,height:844},pagePath='/__camera.html',profile=null) {
   const context=await browser.newContext({viewport,permissions:['camera']});
   const page=await context.newPage();page.setDefaultTimeout(15000);
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
@@ -52,16 +52,40 @@ async function open(viewport={width:390,height:844},pagePath='/__camera.html') {
     if(url.origin!==base)return route.abort();
     return route.continue();
   });
-  await page.addInitScript(()=>{
-    window.__streams=[];window.__codes=[];
+  await page.addInitScript(profile=>{
+    window.__streams=[];window.__codes=[];window.__controlCalls=[];
+    if(profile){
+      const supported=navigator.mediaDevices.getSupportedConstraints.bind(navigator.mediaDevices);
+      navigator.mediaDevices.getSupportedConstraints=()=>({...supported(),pointsOfInterest:true});
+      if(profile.cameras)navigator.mediaDevices.enumerateDevices=async()=>[
+        {kind:'videoinput',deviceId:'rear-wide',label:'Rear wide camera'},
+        {kind:'videoinput',deviceId:'rear-close',label:'Rear close camera'},
+      ];
+    }
     const get=navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
     navigator.mediaDevices.getUserMedia=async constraints=>{
       window.__mediaRequested=true;
       if(window.__delayMedia)await new Promise(r=>setTimeout(r,window.__delayMedia));
       if(window.__denyMedia)throw new DOMException('Permission denied','NotAllowedError');
-      const stream=await get(constraints);window.__streams.push(stream);return stream;
+      const requested=constraints.video?.deviceId?.exact;
+      const stream=await get(profile?.cameras?{...constraints,video:{facingMode:'environment'}}:constraints);
+      window.__streams.push(stream);
+      if(profile){
+        const track=stream.getVideoTracks()[0],getSettings=track.getSettings.bind(track),getConstraints=track.getConstraints.bind(track);
+        let changes={},lastConstraints=getConstraints();
+        track.getCapabilities=()=>profile.capabilities||{};
+        track.getSettings=()=>({...getSettings(),zoom:1,torch:false,...changes,...(profile.cameras?{deviceId:requested||'rear-wide'}:{})});
+        track.getConstraints=()=>lastConstraints;
+        track.applyConstraints=async next=>{
+          const patch=Object.assign({},...(next.advanced||[]));window.__controlCalls.push(patch);
+          if(window.__controlDelay)await new Promise(r=>setTimeout(r,window.__controlDelay));
+          if(window.__rejectFeature&&window.__rejectFeature in patch)throw new DOMException('Unsupported control','OverconstrainedError');
+          lastConstraints=next;changes={...changes,...patch};
+        };
+      }
+      return stream;
     };
-  });
+  },profile);
   await page.goto(base+pagePath);
   await page.waitForFunction(()=>typeof Html5Qrcode==='function');
   // Capture callbacks for lifecycle tests. Real startup/rendering/no-code logic
@@ -112,6 +136,77 @@ try {
     assert.deepEqual(await page.evaluate(()=>__codes),['TEST_SKU']);
     assert.equal(await page.locator('#reader video').count(),0);
     assert.deepEqual(errors,[]);pass('single scan closes only after a result; late callbacks ignored');await context.close();
+  }
+  const fullControls={capabilities:{torch:[false,true],zoom:{min:1,max:4,step:0.5},focusMode:['continuous','single-shot']},cameras:true};
+  for(const viewport of [{width:390,height:844},{width:320,height:640},{width:844,height:390}]) {
+    const {context,page,errors}=await open(viewport,'/__camera.html',fullControls);await init(page);
+    await page.getByRole('button',{name:'Light on',exact:true}).click();
+    await page.getByRole('button',{name:'Light off',exact:true}).waitFor();
+    assert.equal(await page.getByRole('button',{name:'Light off',exact:true}).getAttribute('aria-pressed'),'true');
+    const zoom=page.getByRole('slider');await zoom.focus();await zoom.press('Home');await zoom.press('ArrowRight');
+    await page.waitForFunction(()=>__controlCalls.some(c=>c.zoom===1.5));
+    await zoom.blur();
+    await page.locator('video').scrollIntoViewIfNeeded();
+    const bounds=await page.locator('video').boundingBox();
+    await page.mouse.click(bounds.x+bounds.width*0.25,bounds.y+bounds.height*0.65);
+    await page.waitForFunction(()=>__controlCalls.some(c=>c.focusMode==='single-shot'&&c.pointsOfInterest));
+    const focus=await page.evaluate(()=>__controlCalls.findLast(c=>c.pointsOfInterest));
+    assert.ok(Math.abs(focus.pointsOfInterest[0].x-0.25)<0.02);
+    assert.ok(Math.abs(focus.pointsOfInterest[0].y-0.65)<0.02);
+    assert.equal(focus.torch,true);assert.equal(focus.zoom,1.5);
+    await ready(page,'#reader');
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Controls fit viewport');
+    await page.screenshot({path:`test-results/scanner-controls-${viewport.width}.png`,fullPage:true});
+    await page.getByRole('button',{name:'Close camera',exact:true}).click();
+    await page.waitForFunction(()=>__streams.every(s=>s.getTracks().every(t=>t.readyState==='ended')));
+    assert.deepEqual(errors,[]);pass(`light, hardware zoom, tap focus and close work at ${viewport.width}px`);await context.close();
+  }
+  {
+    const {context,page,errors}=await open(undefined,'/__camera.html',{capabilities:{}});await init(page);
+    assert.equal(await page.getByRole('button',{name:'Light on',exact:true}).count(),0);
+    assert.equal(await page.getByRole('slider').count(),0);
+    assert.equal(await page.getByRole('button',{name:'Refocus',exact:true}).count(),0);
+    assert.match(await page.locator('.camera-tools').textContent(),/Focus is controlled by your phone/);
+    await page.locator('video').click({force:true});await ready(page,'#reader');
+    assert.deepEqual(errors,[]);pass('unsupported controls are explained; tapping still leaves scanner open');await context.close();
+  }
+  {
+    const {context,page,errors}=await open(undefined,'/__camera.html',fullControls);await init(page);
+    await page.evaluate(()=>{__rejectFeature='torch';});
+    await page.getByRole('button',{name:'Light on',exact:true}).click();
+    await page.waitForFunction(()=>document.querySelector('.camera-message').textContent.includes('could not change its light'));
+    await ready(page,'#reader');
+    await page.evaluate(()=>{__rejectFeature='pointsOfInterest';});
+    await page.getByRole('button',{name:'Refocus',exact:true}).click();
+    await page.waitForFunction(()=>document.querySelector('.camera-message').textContent.includes('Autofocus requested'));
+    assert.equal(await page.evaluate(()=>__controlCalls.at(-1).focusMode),'single-shot');
+    await ready(page,'#reader');assert.deepEqual(errors,[]);
+    pass('rejected light/point focus settings preserve scanning and fall back to autofocus');await context.close();
+  }
+  {
+    const {context,page,errors}=await open(undefined,'/__camera.html',fullControls);await init(page);
+    await page.getByLabel('Camera',{exact:true}).selectOption('rear-close');await ready(page,'#reader');
+    await page.waitForFunction(()=>__streams.length===2&&__streams[0].getTracks().every(t=>t.readyState==='ended'));
+    assert.equal(await page.locator('video').count(),1);
+    assert.equal(await page.getByLabel('Camera',{exact:true}).inputValue(),'rear-close');
+    await page.evaluate(()=>{__controlDelay=300;});
+    await page.getByRole('button',{name:'Light on',exact:true}).click();
+    await page.getByRole('button',{name:'Close camera',exact:true}).click();
+    await page.waitForTimeout(350);
+    assert.equal(await page.locator('video').count(),0);
+    assert.ok(await page.evaluate(()=>__streams.every(s=>s.getTracks().every(t=>t.readyState==='ended'))));
+    assert.deepEqual(errors,[]);pass('camera switch releases the old lens; closing during a delayed control cannot reopen it');await context.close();
+  }
+  {
+    const {context,page,errors}=await open(undefined,'/__camera.html',fullControls);await init(page);
+    await page.evaluate(()=>{__denyMedia=true;});
+    await page.getByLabel('Camera',{exact:true}).selectOption('rear-close');
+    await page.getByRole('alert').waitFor();
+    assert.match(await page.getByRole('alert').textContent(),/Tap Scan again/);
+    await page.evaluate(()=>{__denyMedia=false;});await init(page);
+    await page.evaluate(()=>dispatchEvent(new PageTransitionEvent('pagehide')));
+    await page.waitForFunction(()=>__streams.every(s=>s.getTracks().every(t=>t.readyState==='ended')));
+    assert.deepEqual(errors,[]);pass('failed lens switch can retry; leaving the page releases the camera');await context.close();
   }
   {
     const {context,page,errors}=await open();await init(page,true);

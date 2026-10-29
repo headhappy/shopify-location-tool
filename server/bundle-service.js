@@ -13,6 +13,39 @@ const ids = (values, name, max = 100) => {
   );
   return values;
 };
+export function normalizeComponentRule(input) {
+  const type = input?.type;
+  requireValue(
+    ["exact_sku", "product", "prefix", "group"].includes(type),
+    "Choose a valid component rule.",
+  );
+  const rule = {
+    type,
+    excludeVariantIds: ids(input.excludeVariantIds || [], "Excluded variants"),
+  };
+  if (type === "group") {
+    rule.variantIds = ids(input.variantIds, "Restricted variants");
+    requireValue(
+      rule.variantIds.length,
+      "A restricted group needs at least one variant.",
+    );
+  } else {
+    rule.value = shortText(input.value, "Rule value", 100);
+    if (type === "product") {
+      if (/^[1-9][0-9]*$/.test(rule.value))
+        rule.value = `gid://shopify/Product/${rule.value}`;
+      gid(rule.value, "Product");
+    }
+    if (type === "prefix") {
+      rule.value = rule.value.replace(/\*$/, "");
+      requireValue(
+        /^[a-zA-Z0-9_-]{2,80}$/.test(rule.value),
+        "Use a literal SKU prefix (letters, digits, _ or -), optionally ending in *.",
+      );
+    }
+  }
+  return rule;
+}
 export function normalizeRecipe(input) {
   requireValue(input && typeof input === "object", "Recipe is required.");
   const finishedVariantIds = ids(
@@ -44,39 +77,8 @@ export function normalizeRecipe(input) {
       /^[a-zA-Z0-9_-]+$/.test(id),
       "Component IDs may contain only letters, numbers, hyphens and underscores.",
     );
-    const type = c.rule?.type;
-    requireValue(
-      ["exact_sku", "product", "prefix", "group"].includes(type),
-      "Choose a valid component rule.",
-    );
-    const rule = {
-      type,
-      excludeVariantIds: ids(
-        c.rule.excludeVariantIds || [],
-        "Excluded variants",
-      ),
-    };
-    if (type === "group") {
-      rule.variantIds = ids(c.rule.variantIds, "Restricted variants");
-      requireValue(
-        rule.variantIds.length,
-        "A restricted group needs at least one variant.",
-      );
-    } else {
-      rule.value = shortText(c.rule.value, "Rule value", 100);
-      if (type === "product") {
-        if (/^[1-9][0-9]*$/.test(rule.value))
-          rule.value = `gid://shopify/Product/${rule.value}`;
-        gid(rule.value, "Product");
-      }
-      if (type === "prefix") {
-        rule.value = rule.value.replace(/\*$/, "");
-        requireValue(
-          /^[a-zA-Z0-9_-]{2,80}$/.test(rule.value),
-          "Use a literal SKU prefix (letters, digits, _ or -), optionally ending in *.",
-        );
-      }
-    }
+    const rule = normalizeComponentRule(c.rule);
+    const type = rule.type;
     const bindingMode = c.bindingMode || "any";
     requireValue(
       ["any", "by_finished"].includes(bindingMode),
@@ -103,6 +105,9 @@ export function normalizeRecipe(input) {
   );
   return {
     name: shortText(input.name, "Recipe name"),
+    ...(input.bundleProductId
+      ? { bundleProductId: gid(input.bundleProductId, "Product") }
+      : {}),
     finishedVariantIds,
     inventoryOwnership: input.inventoryOwnership,
     components,
@@ -151,6 +156,14 @@ export function createBundleService({ catalog, store }) {
       "A finished variant is missing or archived.",
       422,
     );
+    if (recipe.bundleProductId) {
+      requireValue(
+        finished.every((v) => v.product.id === recipe.bundleProductId),
+        "Choose variants from one bundle product.",
+        422,
+      );
+    }
+    const assigned = new Set();
     for (const component of recipe.components) {
       // Preserve the server's pinned identity on ordinary edits. An unchanged SKU
       // must not silently start referring to a replacement Shopify variant.
@@ -169,12 +182,26 @@ export function createBundleService({ catalog, store }) {
         422,
       );
       requireValue(
-        !candidates.some((v) => recipe.finishedVariantIds.includes(v.id)),
+        !candidates.some(
+          (v) =>
+            recipe.finishedVariantIds.includes(v.id) ||
+            (recipe.bundleProductId && v.product.id === recipe.bundleProductId),
+        ),
         `${component.name}: a finished variant cannot also be a component.`,
         422,
       );
       if (component.rule.type === "exact_sku")
         component.rule.variantId = candidates[0].id;
+      if (recipe.bundleProductId) {
+        for (const variant of candidates) {
+          requireValue(
+            !assigned.has(variant.id),
+            `${component.name}: an item already qualifies for another component. Increase that row's quantity or use separate choices.`,
+            422,
+          );
+          assigned.add(variant.id);
+        }
+      }
       for (const variantId of Object.values(component.bindings))
         requireValue(
           candidates.some((v) => v.id === variantId),

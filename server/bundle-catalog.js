@@ -20,6 +20,12 @@ export const BUNDLE_LOCATIONS_QUERY = `query BundleLocations($after: String) {
   locations(first: 100, after: $after) { nodes { id name isActive } pageInfo { hasNextPage endCursor } }
 }`;
 export const BUNDLE_SHOP_QUERY = `query BundleShop { shop { currencyCode } currentAppInstallation { accessScopes { handle } } }`;
+export const BUNDLE_PRODUCTS_QUERY = `query BundleProducts($query: String!, $after: String) {
+  products(first: 30, after: $after, query: $query) {
+    nodes { id title status variantsCount { count } variants(first: 1) { nodes { sku } } }
+    pageInfo { hasNextPage endCursor }
+  }
+}`;
 const quote = (value) => `"${value.replace(/[\\"]/g, "\\$&")}"`;
 const stockArgs = (locationId) => ({
   locationId: locationId || "gid://shopify/Location/1",
@@ -32,6 +38,7 @@ export function readOnlyBundleGraph(transport) {
     BUNDLE_NODES_QUERY,
     BUNDLE_LOCATIONS_QUERY,
     BUNDLE_SHOP_QUERY,
+    BUNDLE_PRODUCTS_QUERY,
   ]);
   return (query, variables) => {
     requireValue(
@@ -82,6 +89,39 @@ export function createBundleCatalog(transport) {
     );
   }
   return {
+    async products(text, after = null) {
+      text = shortText(text, "Product search", 100);
+      requireValue(
+        !after || (typeof after === "string" && after.length <= 1000),
+        "Invalid search page.",
+      );
+      // Literal search terms: do not interpret user input as Shopify query syntax.
+      const words = text
+        .split(/\s+/)
+        .map((word) => `title:${quote(word)}*`)
+        .join(" AND ");
+      const query = `status:active,draft,unlisted AND ((${words}) OR sku:${quote(text)}* OR barcode:${quote(text)})`;
+      const data = await graph(BUNDLE_PRODUCTS_QUERY, { query, after });
+      requireValue(
+        Array.isArray(data.products?.nodes) && data.products.pageInfo,
+        "Product search is unavailable.",
+        502,
+      );
+      return {
+        products: data.products.nodes
+          .filter((p) => p.status !== "ARCHIVED")
+          .map((p) => ({
+            id: p.id,
+            title: p.title,
+            status: p.status,
+            variantCount: p.variantsCount?.count ?? null,
+            sku: p.variants.nodes[0]?.sku || "",
+          })),
+        nextCursor: data.products.pageInfo.hasNextPage
+          ? data.products.pageInfo.endCursor
+          : null,
+      };
+    },
     async metadata() {
       const data = await graph(BUNDLE_SHOP_QUERY);
       const scopes = new Set(
@@ -143,11 +183,19 @@ export function createBundleCatalog(transport) {
     },
     async scan(value, locationId) {
       value = shortText(value, "Barcode or exact SKU", 100);
-      const matches = (await search(`sku:${quote(value)} OR barcode:${quote(value)}`, locationId))
-        .filter((v) => v.sku === value || v.barcode === value);
-      requireValue(matches.length === 1, matches.length
-        ? "This barcode or SKU matches more than one item. Ask a manager to correct it."
-        : "Barcode or exact SKU not found.", 422);
+      const matches = (
+        await search(
+          `sku:${quote(value)} OR barcode:${quote(value)}`,
+          locationId,
+        )
+      ).filter((v) => v.sku === value || v.barcode === value);
+      requireValue(
+        matches.length === 1,
+        matches.length
+          ? "This barcode or SKU matches more than one item. Ask a manager to correct it."
+          : "Barcode or exact SKU not found.",
+        422,
+      );
       return matches[0];
     },
     async exactSku(sku, locationId) {

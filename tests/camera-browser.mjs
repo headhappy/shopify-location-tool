@@ -185,10 +185,10 @@ try {
   }
   {
     const {context,page,errors}=await open(undefined,'/__camera.html',fullControls);await init(page);
-    await page.getByLabel('Camera',{exact:true}).selectOption('rear-close');await ready(page,'#reader');
+    await page.getByRole('combobox',{name:'Camera',exact:true}).selectOption('rear-close');await ready(page,'#reader');
     await page.waitForFunction(()=>__streams.length===2&&__streams[0].getTracks().every(t=>t.readyState==='ended'));
     assert.equal(await page.locator('video').count(),1);
-    assert.equal(await page.getByLabel('Camera',{exact:true}).inputValue(),'rear-close');
+    assert.equal(await page.getByRole('combobox',{name:'Camera',exact:true}).inputValue(),'rear-close');
     await page.evaluate(()=>{__controlDelay=300;});
     await page.getByRole('button',{name:'Light on',exact:true}).click();
     await page.getByRole('button',{name:'Close camera',exact:true}).click();
@@ -200,7 +200,7 @@ try {
   {
     const {context,page,errors}=await open(undefined,'/__camera.html',fullControls);await init(page);
     await page.evaluate(()=>{__denyMedia=true;});
-    await page.getByLabel('Camera',{exact:true}).selectOption('rear-close');
+    await page.getByRole('combobox',{name:'Camera',exact:true}).selectOption('rear-close');
     await page.getByRole('alert').waitFor();
     assert.match(await page.getByRole('alert').textContent(),/Tap Scan again/);
     await page.evaluate(()=>{__denyMedia=false;});await init(page);

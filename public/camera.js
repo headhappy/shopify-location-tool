@@ -91,7 +91,15 @@ export class Camera {
       let decoding = false;
       try {
         if (box.clientWidth < 60) throw new Error('The camera area is hidden or too narrow. Open this page normally and try again.');
-        const reader = new globalThis.Html5Qrcode(box.id);
+        // Keep the library's 100%-height shaded overlay inside a video-only
+        // container. Otherwise adding controls extends that overlay over them.
+        const capture = document.createElement('div');
+        capture.id = `${box.id}-capture`;
+        capture.style.display = 'block';
+        capture.style.width = '100%';
+        capture.style.position = 'relative';
+        box.replaceChildren(capture);
+        const reader = new globalThis.Html5Qrcode(capture.id);
         this.reader = reader;
         await reader.start(
           deviceId ? { deviceId: { exact: deviceId } } : { facingMode: 'environment' },

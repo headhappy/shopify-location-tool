@@ -28,5 +28,6 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
       - run: pnpm typecheck
-      - run: pnpm validate
-      - run: pnpm build
+      # Shopify CLI 5 config validation/build may require an authenticated account.
+      # Keep PR checks credential-free; run the CLI checks locally before release.
+      - run: pnpm build:check

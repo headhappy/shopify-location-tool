@@ -43,7 +43,7 @@ Local verification: 41 automated tests, TypeScript checks, Shopify app config va
 
 The installed Shopify AI Toolkit UI validator was attempted for both targets but cannot start because its own package is missing TypeScript. Its search catalog also predates the generated 2026-10 target. The installed 2026.10.2 Shopify types and CLI build were used; do not report the Toolkit validator as passed.
 
-CI runs tests, type checking, config validation and build without publishing. No deploy occurs on merge.
+CI runs tests, type checking, a read-only scope guard and offline bundling without store credentials. Shopify CLI 5 configuration validation requires login, so run the signed-in CLI validation/build locally before release; both passed during implementation. No deploy occurs on merge.
 
 ## Release and access
 

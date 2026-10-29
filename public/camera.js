@@ -1,7 +1,7 @@
 // Keep the scan container measurable BEFORE Html5Qrcode creates its video.
 // The library clears the container and reads clientWidth while it is empty.
-import { attachCameraControls } from './camera-controls.js?v=1.4.2';
-export const CAMERA_VERSION = '1.4.2';
+import { attachCameraControls } from './camera-controls.js?v=1.4.3';
+export const CAMERA_VERSION = '1.4.3';
 
 export function scanBox(width, height) {
   if (width < 60 || height < 60) throw new Error('Camera preview is too small. Open the scanner in a visible area.');

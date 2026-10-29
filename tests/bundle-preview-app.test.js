@@ -30,6 +30,8 @@ test("test deployment exposes only the protected builder and refuses legacy writ
   const page = await fetch(origin + "/bundle-builder.html");
   assert.equal(page.status, 200);
   assert.equal(page.headers.get("x-frame-options"), "DENY");
+  for (const file of ["deal-tester.html", "deal-tester.js", "deal-tester.css"])
+    assert.equal((await fetch(origin + "/" + file)).status, 200);
   assert.equal((await fetch(origin + "/server-main.js")).status, 404);
   const health = await (await fetch(origin + "/health")).json();
   assert.equal(health.inventoryWritesEnabled, false);

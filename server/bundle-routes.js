@@ -3,6 +3,7 @@ import { BundleError, requireValue } from "./bundle-errors.js";
 import { createBundleAuth } from "./bundle-auth.js";
 import { variantSummary } from "./bundle-service.js";
 import { previewCursor } from "./bundle-store.js";
+import { createDealService } from "./deal-service.js";
 
 const safeCell = (value) => {
   const text = String(value ?? "");
@@ -117,6 +118,13 @@ export function createBundleRouter({
       inventoryWritesEnabled: false,
     }),
   );
+  const deals = createDealService({ catalog, store });
+  router.get("/deals/:id", run(async (req, res) => {
+    res.json(await deals.definition(req.params.id, req.query.locationId, Number(req.query.recipeVersion)));
+  }));
+  router.post("/deals/:id/test", run(async (req, res) => {
+    res.json(await deals.test(req.params.id, req.body));
+  }));
   router.post(
     "/logout",
     run(async (req, res) => {

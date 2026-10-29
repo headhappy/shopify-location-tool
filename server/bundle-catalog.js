@@ -141,6 +141,15 @@ export function createBundleCatalog(transport) {
         locationId,
       );
     },
+    async scan(value, locationId) {
+      value = shortText(value, "Barcode or exact SKU", 100);
+      const matches = (await search(`sku:${quote(value)} OR barcode:${quote(value)}`, locationId))
+        .filter((v) => v.sku === value || v.barcode === value);
+      requireValue(matches.length === 1, matches.length
+        ? "This barcode or SKU matches more than one item. Ask a manager to correct it."
+        : "Barcode or exact SKU not found.", 422);
+      return matches[0];
+    },
     async exactSku(sku, locationId) {
       sku = shortText(sku, "SKU", 100);
       const rows = (await search(`sku:${quote(sku)}`, locationId)).filter(

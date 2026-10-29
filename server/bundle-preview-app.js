@@ -34,6 +34,9 @@ export function createBundlePreviewApp({ router, ready, commit = null }) {
     "bundle-builder.html",
     "bundle-builder.js",
     "bundle-builder.css",
+    "deal-tester.html",
+    "deal-tester.js",
+    "deal-tester.css",
   ]) {
     app.get(`/${file}`, (_req, res) =>
       res.sendFile(path.join(publicDirectory, file), { cacheControl: false }),

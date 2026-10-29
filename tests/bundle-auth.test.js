@@ -279,3 +279,21 @@ test("authenticated full CSV export is marked preview-only and missing configura
   );
   assert.equal(code, 503);
 });
+
+test("deal simulator inherits staff sessions and CSRF; it cannot submit sales or change inventory", async (t) => {
+  const c = await apiFixture(t), recipe = await savedCrown(c);
+  const path = `/deals/${recipe.id}/test`;
+  const body = { recipeVersion: recipe.version, locationId: "gid://shopify/Location/1", lines: [], scan: "RB_RC_M3" };
+  assert.equal((await c.request(path, { method: "POST", body })).response.status, 401);
+  await c.login("sam");
+  assert.equal((await c.request(path, { method: "POST", body, headers: { "X-CSRF-Token": "wrong" } })).response.status, 403);
+  assert.equal((await c.request(path, { method: "POST", body, headers: { Origin: "https://evil.example" } })).response.status, 403);
+  const result = await c.request(path, { method: "POST", body });
+  assert.equal(result.response.status, 200);
+  assert.equal(result.data.lines.length, 1);
+  assert.equal(result.data.inventoryWritesEnabled, false);
+  assert.equal(result.data.appliedAdjustments, 0);
+  assert.equal((await c.request(`/deals/${recipe.id}/sell`, { method: "POST", body })).response.status, 404);
+  assert.equal((await c.request("/assemblies", { method: "POST", body })).response.status, 403);
+  assert.deepEqual(await c.store.listPreviews(), []);
+});

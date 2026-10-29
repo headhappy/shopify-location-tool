@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'self'" />
+  <title>Scan a deal · Head Happy</title>
+  <link rel="stylesheet" href="/bundle-builder.css" />
+  <link rel="stylesheet" href="/deal-tester.css" />
+  <script type="module" src="/deal-tester.js"></script>
+</head>
+<body>
+  <header>
+    <a class="brand" href="/index.html">HEAD HAPPY<span>Stock Control + Locations</span></a>
+    <nav aria-label="Application"><a href="/index.html">Locations</a><a href="/bundle-builder.html">Bundle Builder</a><a href="/deal-tester.html" aria-current="page">Scan a deal · test</a></nav>
+  </header>
+  <main>
+    <div class="title-row"><div><p class="eyebrow">MIX &amp; MATCH</p><h1>Scan a deal</h1><p>Any eligible colour. One deal price.</p></div><span class="badge">TILL SIMULATOR</span></div>
+    <aside class="notice"><strong>This is a practice till.</strong><span>Scan the actual items. A complete set earns the deal price automatically in this test. Nothing is sold, saved or changed in Shopify.</span></aside>
+    <p id="status" role="status" aria-live="polite"></p>
+    <section id="login-panel" class="card narrow">
+      <h2>Staff sign in</h2><p>Use your existing Bundle Builder login.</p>
+      <form id="login-form"><label>Staff ID<input name="username" autocomplete="username" required maxlength="60" /></label><label>Password<input name="password" type="password" autocomplete="current-password" required maxlength="256" /></label><button type="submit">Sign in</button></form>
+    </section>
+    <div id="workspace" hidden>
+      <div class="workspace-bar"><p>Choose a deal and store, then scan each item.</p><button id="logout" type="button" class="quiet">Sign out</button></div>
+      <form id="setup" class="card"><div class="grid"><label>Deal<select id="deal" required></select></label><label>Store<select id="location" required></select></label></div><button type="submit">Start scanning</button>
+        <details><summary>About this first test</summary><p>Deals use the product and component families from your saved kit recipes. Every eligible colour can mix freely here; the old completed-kit colour restrictions do not apply. Your saved recipes stay unchanged.</p><p>One deal is tested at a time. Extra eligible items keep their regular price. This page is not connected to the Shopify POS basket, and the practice basket clears when you reload or leave.</p></details>
+      </form>
+      <div id="till" hidden>
+        <div class="till-layout">
+          <section class="card">
+            <h2 id="deal-title"></h2><p id="deal-price"></p>
+            <form id="scan-form"><label for="scan">Scan barcode or type exact SKU</label><div class="scan-row"><input id="scan" maxlength="100" autocomplete="off" required /><button type="submit">Add</button></div></form>
+            <p id="queue-status" role="status"></p>
+            <details id="choices"><summary>No scanner? Choose an item</summary><div id="eligible-items"></div></details>
+            <div id="basket"></div>
+            <button id="clear" type="button" class="quiet">Clear basket</button>
+          </section>
+          <section class="card receipt" aria-labelledby="result-title">
+            <p class="eyebrow">PRACTICE BASKET</p><h2 id="result-title">Scan your first item</h2>
+            <ul id="progress" class="progress"></ul>
+            <div id="totals"></div><div id="warnings" role="status"></div>
+            <p class="hint">Stock stays unchanged. Actual colours would be recorded as component items on a future POS sale. Scanning a deal barcode alone cannot identify them.</p>
+          </section>
+        </div>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

@@ -8,7 +8,7 @@
     "test": "node --test tests/*.test.js",
     "bundle:migrate": "node scripts/bundle-migrate.js",
     "bundle:password": "node scripts/bundle-password.js",
-    "test:bundles:browser": "node tests/bundle-browser.mjs",
+    "test:bundles:browser": "node tests/bundle-browser.mjs && node tests/bundle-editor-browser.mjs",
     "start:bundle-preview": "node server-bundle-preview.js"
   },
   "dependencies": {

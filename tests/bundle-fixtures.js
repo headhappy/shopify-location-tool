@@ -101,6 +101,36 @@ export function graphFixture(rows = variantsFixture()) {
           structuredClone(rows.find((v) => v.id === id) || null),
         ),
       };
+    if (query.includes("query BundleProducts")) {
+      const term =
+        variables.query.match(/title:"([^"]+)"/)?.[1]?.toLowerCase() || "";
+      const products = [
+        ...new Map(rows.map((v) => [v.product.id, v.product])).values(),
+      ].filter((p) =>
+        rows.some(
+          (v) =>
+            v.product.id === p.id &&
+            `${p.title} ${v.sku}`.toLowerCase().includes(term),
+        ),
+      );
+      return {
+        products: {
+          nodes: products.map((p) => ({
+            ...p,
+            variantsCount: {
+              count: rows.filter((v) => v.product.id === p.id).length,
+            },
+            variants: {
+              nodes: rows
+                .filter((v) => v.product.id === p.id)
+                .slice(0, 1)
+                .map((v) => ({ sku: v.sku })),
+            },
+          })),
+          pageInfo: { hasNextPage: false, endCursor: null },
+        },
+      };
+    }
     return {
       productVariants: {
         nodes: structuredClone(rows),

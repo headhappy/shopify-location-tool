@@ -1,810 +1,713 @@
 const $ = (id) => document.getElementById(id);
 const state = {
-  recipes: [],
-  variants: new Map(),
   csrf: "",
   staff: null,
+  recipes: [],
   draft: null,
-  resolved: null,
+  dirty: false,
+  busy: false,
+  currency: "GBP",
+  picker: null,
   generation: 0,
-  previewKey: null,
-  history: [],
 };
-function el(tag, text, className) {
+const el = (tag, text, className) => {
   const node = document.createElement(tag);
   if (text !== undefined) node.textContent = text;
   if (className) node.className = className;
   return node;
+};
+const money = (value) =>
+  Number.isFinite(Number(value))
+    ? new Intl.NumberFormat("en-GB", {
+        style: "currency",
+        currency: state.currency,
+      }).format(Number(value))
+    : "Price unavailable";
+const itemName = (v) =>
+  v.title === "Default Title"
+    ? v.productTitle
+    : `${v.productTitle} / ${v.title}`;
+function status(message = "", error = false, picker = false) {
+  const node = $(picker ? "picker-status" : "status");
+  node.textContent = message;
+  node.className = error ? "error" : "";
 }
-function button(text, action, className = "secondary") {
+function button(text, action, className = "") {
   const node = el("button", text, className);
   node.type = "button";
-  node.addEventListener("click", () => perform(action, node));
+  node.addEventListener("click", () => run(action));
   return node;
 }
-function status(text, error = false) {
-  $("status").textContent = text;
-  $("status").className = error ? "error" : "";
+async function api(path, data, method = "POST") {
+  const response = await fetch(`/api/bundles${path}`, {
+    method: data === undefined ? "GET" : method,
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json", "X-CSRF-Token": state.csrf },
+    ...(data === undefined ? {} : { body: JSON.stringify(data) }),
+  });
+  const result = await response.json();
+  if (!response.ok) {
+    if (response.status === 401) login();
+    const error = new Error(
+      result.error || "Could not load bundle data. Please retry.",
+    );
+    error.status = response.status;
+    throw error;
+  }
+  return result;
 }
-async function perform(action, node) {
-  if (node) node.disabled = true;
+async function run(action) {
+  if (state.busy) return;
+  state.busy = true;
+  const controls = [
+    ...document.querySelectorAll(
+      "#bundle-editor button, #bundle-editor input, #picker button, #picker input, #logout, #new-bundle, #bundle-list button, #login-form button",
+    ),
+  ];
+  const prior = controls.map((n) => n.disabled);
+  controls.forEach((n) => {
+    n.disabled = true;
+  });
   try {
     await action();
   } catch (error) {
-    status(error.message, true);
+    status(error.message, true, $("picker").open);
   } finally {
-    if (node) node.disabled = false;
+    controls.forEach((n, i) => {
+      if (n.isConnected) n.disabled = prior[i];
+    });
+    state.busy = false;
+    sync();
   }
 }
-async function api(path, options = {}) {
-  const response = await fetch(`/api/bundles${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      "X-CSRF-Token": state.csrf,
-      ...options.headers,
-    },
-    credentials: "same-origin",
-  });
-  const data = await response.json();
-  if (!response.ok) {
-    if (response.status === 401) showLogin();
-    throw new Error(data.error || "Request failed. Please retry.");
-  }
-  return data;
-}
-const post = (path, data) =>
-  api(path, { method: "POST", body: JSON.stringify(data) });
-function remember(variants) {
-  variants.forEach((v) => state.variants.set(v.id, v));
-}
-function labelFor(id) {
-  const v = state.variants.get(id);
-  return v ? `${v.sku || "No SKU"} · ${v.productTitle} / ${v.title}` : id;
-}
-function fill(select, choices, placeholder) {
-  select.replaceChildren();
-  if (placeholder) select.append(new Option(placeholder, ""));
-  choices.forEach(([value, label]) => select.append(new Option(label, value)));
-}
-function invalidate() {
+function login() {
   state.generation++;
-  state.previewKey = null;
-  $("preview-panel").hidden = true;
-}
-function clearComponents() {
-  invalidate();
-  state.resolved = null;
-  $("components-panel").hidden = true;
-  $("components-confirmed").checked = false;
-}
-function showLogin() {
-  $("login-panel").hidden = false;
-  $("workspace").hidden = true;
   state.csrf = "";
   state.staff = null;
-  clearComponents();
+  state.draft = null;
+  state.dirty = false;
+  state.recipes = [];
+  state.picker = null;
+  if ($("picker").open) $("picker").close();
+  $("workspace").hidden = true;
+  $("account").hidden = true;
+  $("login-panel").hidden = false;
+  $("bundle-list").replaceChildren();
+  $("components").replaceChildren();
 }
-function tab(name) {
-  for (const panel of ["assembly", "recipes", "history"])
-    $(`${panel}-panel`).hidden = panel !== name;
-  document
-    .querySelectorAll("[data-tab]")
-    .forEach((b) =>
-      b.setAttribute("aria-pressed", String(b.dataset.tab === name)),
-    );
-}
-async function loadRecipes() {
-  const old = $("assembly-recipe").value;
-  state.recipes = (await api("/recipes")).recipes;
-  const ids = [...new Set(state.recipes.flatMap((r) => r.finishedVariantIds))];
-  for (let i = 0; i < ids.length; i += 100)
-    remember(
-      (await post("/variants/resolve", { ids: ids.slice(i, i + 100) }))
-        .variants,
-    );
-  fill(
-    $("assembly-recipe"),
-    state.recipes.map((r) => [r.id, r.name]),
-    "Choose a kit recipe",
-  );
-  if (state.recipes.some((r) => r.id === old)) $("assembly-recipe").value = old;
-  changeRecipe();
-  renderRecipes();
-}
-function changeRecipe() {
-  clearComponents();
-  const recipe = state.recipes.find((r) => r.id === $("assembly-recipe").value);
-  fill(
-    $("assembly-finished"),
-    (recipe?.finishedVariantIds || []).map((id) => [id, labelFor(id)]),
-    "Choose the completed kit colour",
-  );
-}
-async function enter(session) {
+async function signedIn(session) {
   state.csrf = session.csrf;
   state.staff = session.staff;
+  const data = await api("/recipes");
+  state.recipes = data.recipes;
+  // Currency only affects the optional price display; editing is still available if stock metadata is down.
+  try {
+    state.currency = (await api("/catalog")).currency;
+  } catch (error) {
+    if (!state.staff) throw error;
+  }
+  $("staff-name").textContent = session.staff.name;
   $("login-panel").hidden = true;
   $("workspace").hidden = false;
-  $("staff-name").textContent = `${state.staff.name} · ${state.staff.role}`;
-  $("manager-actions").hidden = state.staff.role !== "manager";
-  $("recipe-editor").hidden = true;
-  tab("assembly");
-  const catalog = await api("/catalog");
-  state.currency = catalog.currency;
-  fill(
-    $("assembly-location"),
-    catalog.locations.map((l) => [l.id, l.name]),
-    "Choose a store",
-  );
-  await loadRecipes();
-  status(
-    state.recipes.length
-      ? "Ready to test. Choose a kit recipe; start with 1 kit."
-      : "No recipes yet. A manager can create one in Kit recipes.",
-  );
+  $("account").hidden = false;
+  $("new-bundle").hidden = session.staff.role !== "manager";
+  showList();
+  status();
 }
-$("login-form").addEventListener("submit", (event) => {
-  event.preventDefault();
-  const form = event.currentTarget,
-    credentials = Object.fromEntries(new FormData(form));
-  perform(async () => {
-    const session = await post("/login", credentials);
-    form.reset();
-    await enter(session);
-  }, form.querySelector("button"));
-});
-$("logout").addEventListener("click", () =>
-  perform(async () => {
-    await post("/logout", {});
-    state.variants.clear();
-    state.recipes = [];
-    showLogin();
-    status("Signed out.");
-  }),
-);
-document.querySelectorAll("[data-tab]").forEach((b) =>
-  b.addEventListener("click", () => {
-    tab(b.dataset.tab);
-    if (b.dataset.tab === "history") perform(loadHistory);
-  }),
-);
-$("assembly-recipe").addEventListener("change", changeRecipe);
-for (const id of [
-  "assembly-finished",
-  "assembly-location",
-  "assembly-quantity",
-])
-  $(id).addEventListener("change", clearComponents);
-$("assembly-quantity").addEventListener("input", clearComponents);
-$("components-confirmed").addEventListener("change", invalidate);
-$("resolve").addEventListener("click", () =>
-  perform(async () => {
-    clearComponents();
-    const generation = state.generation;
-    const recipe = state.recipes.find(
-      (r) => r.id === $("assembly-recipe").value,
+function showList() {
+  state.draft = null;
+  state.dirty = false;
+  state.generation++;
+  $("bundle-editor").hidden = true;
+  $("bundle-list-panel").hidden = false;
+  const list = $("bundle-list");
+  list.replaceChildren();
+  if (!state.recipes.length) {
+    const empty = el("div", undefined, "empty");
+    empty.append(
+      el("strong", "Your first bundle starts with a product."),
+      el(
+        "p",
+        "Select it, add its components and save. No new Shopify products are created.",
+      ),
     );
-    if (
-      !recipe ||
-      !$("assembly-finished").value ||
-      !$("assembly-location").value
-    )
-      throw new Error(
-        "Choose a kit recipe, completed kit colour and store.",
-      );
-    const quantity = Number($("assembly-quantity").value);
-    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 10000)
-      throw new Error("Enter a whole number of kits from 1 to 10,000.");
-    const resolved = await post(`/recipes/${recipe.id}/resolve`, {
-      recipeVersion: recipe.version,
-      finishedVariantId: $("assembly-finished").value,
-      locationId: $("assembly-location").value,
-    });
-    if (generation !== state.generation) return;
-    state.resolved = resolved;
-    state.resolvedRecipe = recipe;
-    renderComponents(quantity);
-    $("components-panel").hidden = false;
-    status("Choose the actual items, check the quantities, then save your test preview.");
-  }, $("resolve")),
-);
-function renderComponents(quantity) {
-  $("assembly-components").replaceChildren();
-  for (const group of state.resolved.components) {
-    const card = el("div", undefined, "component"),
-      label = el(
-        "label",
-        `${group.name} · ${group.quantity * quantity} needed (${group.quantity} per kit)`,
-      );
-    const select = el("select");
-    select.dataset.componentId = group.id;
-    fill(
-      select,
-      group.candidates.map((v) => [
-        v.id,
-        `${v.sku} · ${v.title} · ${v.available ?? "?"} available${v.cost ? ` · ${v.cost.amount} ${v.cost.currencyCode} each` : " · cost missing"}`,
-      ]),
-      "Choose the item / colour used",
+    list.append(empty);
+  }
+  for (const recipe of state.recipes) {
+    const card = el("article", undefined, "bundle-card"),
+      text = el("div", undefined, "grow");
+    text.append(
+      el("h3", recipe.name),
+      el(
+        "p",
+        recipe.components.map((c) => `${c.quantity} × ${c.name}`).join(" · "),
+      ),
+      el("span", "Saved setup · stock updates off", "tag amber"),
     );
-    if (group.candidates.length === 1) select.value = group.candidates[0].id;
-    select.addEventListener("change", () => {
-      $("components-confirmed").checked = false;
-      invalidate();
-    });
-    label.append(select);
-    const scanLabel = el("label", "Scan barcode or exact SKU"),
-      scan = el("input");
-    scan.placeholder = "Scan, then press Enter";
-    scan.autocomplete = "off";
-    scanLabel.append(scan);
-    scan.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter") return;
-      event.preventDefault();
-      const matches = group.candidates.filter(
-        (v) => v.barcode === scan.value.trim() || v.sku === scan.value.trim(),
-      );
-      if (matches.length !== 1) {
-        status(
-          "Scan must match exactly one eligible variant. Choose from the list if the barcode or SKU is duplicated.",
-          true,
-        );
-        return;
-      }
-      select.value = matches[0].id;
-      $("components-confirmed").checked = false;
-      invalidate();
-      status(`Selected ${matches[0].sku} · ${matches[0].title}`);
-      scan.value = "";
-    });
-    const grid = el("div", undefined, "grid");
-    grid.append(label, scanLabel);
-    card.append(grid);
-    if (group.bindingMode === "by_finished")
-      card.append(
+    card.append(
+      text,
+      button(
+        state.staff.role === "manager" ? "Edit bundle" : "View bundle",
+        () => edit(recipe.id),
+      ),
+    );
+    list.append(card);
+  }
+}
+function start() {
+  state.draft = {
+    name: "",
+    finishedVariantIds: [],
+    inventoryOwnership: "unconfirmed",
+    components: [],
+    finished: [],
+  };
+  state.dirty = false;
+  showEditor();
+}
+async function edit(id) {
+  const data = await api(`/definitions/${encodeURIComponent(id)}`);
+  const parentIds = new Set(data.finished.map((v) => v.productId));
+  state.draft = {
+    ...data.recipe,
+    finished: data.finished,
+    components: data.components,
+    ...(parentIds.size === 1
+      ? { bundleProductId: data.finished[0].productId }
+      : {}),
+  };
+  state.dirty = false;
+  showEditor();
+}
+function showEditor() {
+  $("bundle-list-panel").hidden = true;
+  $("bundle-editor").hidden = false;
+  $("editor-title").textContent = state.draft.id
+    ? "Edit bundle"
+    : "Set up new bundle";
+  status();
+  render();
+  $("editor-title").scrollIntoView({ block: "nearest" });
+}
+function change() {
+  state.dirty = true;
+  sync();
+}
+function sync() {
+  const d = state.draft,
+    manager = state.staff?.role === "manager";
+  $("select-bundle").disabled = state.busy || !manager;
+  $("add-components").disabled = state.busy || !manager || !d?.finished.length;
+  $("save-bundle").disabled =
+    state.busy ||
+    !manager ||
+    !d?.finished.length ||
+    !d?.components.length ||
+    d.components.some((c) => !c.choices?.length || c.issue);
+  $("confirm-picker").disabled = state.busy || !state.picker?.selected.size;
+  if (state.picker)
+    $("selection-count").textContent = state.picker.selected.size
+      ? `${state.picker.selected.size} selected`
+      : "Nothing selected";
+}
+function priceRange(rows) {
+  const prices = [...new Set(rows.map((v) => v.price))];
+  return prices.length === 1
+    ? money(prices[0])
+    : `${money(Math.min(...prices.map(Number)))}–${money(Math.max(...prices.map(Number)))}`;
+}
+function choiceList(rows) {
+  const list = el("ul", undefined, "choice-list");
+  for (const v of rows) {
+    const line = el("li"),
+      text = el("span", v.title === "Default Title" ? v.productTitle : v.title);
+    text.append(el("small", v.sku || "No SKU"));
+    line.append(text, el("span", money(v.price)));
+    list.append(line);
+  }
+  return list;
+}
+function render() {
+  const d = state.draft;
+  if (!d) return;
+  const summary = $("bundle-product");
+  summary.replaceChildren();
+  if (d.finished.length) {
+    const titles = [...new Set(d.finished.map((v) => v.productTitle))];
+    summary.append(
+      el("strong", titles.join(" / ")),
+      el(
+        "div",
+        d.finished.map((v) => v.sku || v.title).join(" · "),
+        "product-meta",
+      ),
+      el(
+        "div",
+        `Shopify price: ${priceRange(d.finished)} · ${d.finished.length === 1 ? "1 bundle SKU" : `${d.finished.length} existing variants in this product`}`,
+        "product-price",
+      ),
+    );
+    if (d.finished.length !== d.finishedVariantIds.length)
+      summary.append(
         el(
           "p",
-          "This item must match the completed kit colour.",
-          "hint",
+          "Some saved bundle variants are missing. Select the bundle again before saving.",
+          "component-warning",
         ),
       );
-    $("assembly-components").append(card);
   }
-}
-$("preview").addEventListener("click", () =>
-  perform(async () => {
-    if (!state.resolved) throw new Error("Load components first.");
-    const generation = state.generation;
-    state.previewKey ||= crypto.randomUUID();
-    const body = {
-      recipeVersion: state.resolvedRecipe.version,
-      finishedVariantId: state.resolved.finished.id,
-      locationId: state.resolved.location.id,
-      quantity: Number($("assembly-quantity").value),
-      confirmed: $("components-confirmed").checked,
-      idempotencyKey: state.previewKey,
-      selections: [...document.querySelectorAll("[data-component-id]")].map(
-        (s) => ({ componentId: s.dataset.componentId, variantId: s.value }),
-      ),
-    };
-    const { preview } = await post(
-      `/recipes/${state.resolvedRecipe.id}/preview`,
-      body,
-    );
-    if (generation !== state.generation) return;
-    renderPreview(preview);
-    status("Test saved in Saved tests & export. Shopify stock is unchanged.");
-    $("preview-panel").scrollIntoView({ behavior: "smooth", block: "start" });
-  }, $("preview")),
-);
-function money(value, currency = state.currency) {
-  return value === null || value === undefined
-    ? "Unavailable"
-    : new Intl.NumberFormat("en-GB", { style: "currency", currency }).format(
-        Number(value),
+  $("select-bundle").textContent = d.finished.length
+    ? "Change bundle"
+    : "Select bundle";
+  const container = $("components");
+  container.replaceChildren();
+  for (const c of d.components) {
+    const row = el("div", undefined, "component-row");
+    row.dataset.componentId = c.id;
+    const quantityLabel = el("label", "Quantity"),
+      quantity = el("input");
+    Object.assign(quantity, {
+      type: "number",
+      min: "1",
+      max: "1000",
+      step: "1",
+      value: String(c.quantity),
+      required: true,
+    });
+    quantity.setAttribute("aria-label", `Quantity for ${c.name}`);
+    quantity.disabled = state.staff.role !== "manager";
+    quantity.addEventListener("input", () => {
+      c.quantity = Number(quantity.value);
+      change();
+    });
+    quantityLabel.append(quantity);
+    const info = el("div");
+    info.append(el("div", c.name, "component-name"));
+    const count = c.choices?.length || 0;
+    const excluded = c.rule.excludeVariantIds?.length || 0;
+    const label =
+      c.rule.type === "product"
+        ? `All colours${excluded ? ` except ${excluded} excluded` : ""} · ${count} eligible`
+        : c.rule.type === "prefix"
+          ? `SKU family ${c.rule.value}* · ${count} eligible`
+          : c.rule.type === "exact_sku"
+            ? `Specific item · ${c.rule.value}`
+            : `${count} selected items`;
+    info.append(el("span", label, "tag"));
+    if (c.issue) info.append(el("p", c.issue, "component-warning"));
+    if (c.choices?.length) {
+      const details = el("details");
+      details.append(
+        el("summary", `View eligible items (${count})`),
+        choiceList(c.choices),
       );
-}
-function renderPreview(p, target = "preview-panel") {
-  const panel = $(target);
-  panel.replaceChildren();
-  panel.hidden = false;
-  panel.append(
-    el("span", "SAVED TEST · STOCK UNCHANGED", "badge"),
-    el("h2", `${p.quantity} × ${p.finished.sku}`),
-    el(
-      "p",
-      `${p.recipeName} · ${p.location.name} · ${new Date(p.createdAt).toLocaleString("en-GB")}`,
-    ),
-    el("p", `Existing Shopify kit: ${p.finished.productTitle} / ${p.finished.title} · SKU ${p.finished.sku}`),
-    el("p", "This test is saved in Saved tests & export in this app. It has not created a product, order or stock adjustment in Shopify.", "hint"),
-  );
-  const metrics = el("div", undefined, "metrics");
-  for (const [title, value] of [
-    ["Component cost", money(p.totalComponentCost, p.currency)],
-    ["Cost per finished kit", money(p.unitComponentCost, p.currency)],
-    [
-      "Indicative price / cost margin",
-      p.indicativeMarginPercent === null
-        ? "Unavailable"
-        : `${p.indicativeMarginPercent}%`,
-    ],
-  ]) {
-    const m = el("div", undefined, "metric");
-    m.append(el("span", title), el("strong", value));
-    metrics.append(m);
+      info.append(details);
+      if (new Set(c.choices.map((v) => v.price)).size > 1)
+        info.append(
+          el(
+            "p",
+            `Prices vary: ${priceRange(c.choices)}. Use Specific item if you want a fixed option.`,
+            "component-warning",
+          ),
+        );
+    }
+    if (c.bindingMode === "by_finished") {
+      info.append(
+        el(
+          "p",
+          "Earlier setup: this component must match the bundle colour.",
+          "component-warning",
+        ),
+      );
+      if (state.staff.role === "manager")
+        info.append(
+          button(
+            "Allow any eligible colour",
+            () => {
+              c.bindingMode = "any";
+              c.bindings = {};
+              change();
+              render();
+            },
+            "inline-action",
+          ),
+        );
+    }
+    const actions = el("div", undefined, "component-actions");
+    if (state.staff.role === "manager") {
+      actions.append(
+        button("Change", () => openPicker("component", c.id)),
+        button(
+          "Remove",
+          () => {
+            d.components = d.components.filter((v) => v.id !== c.id);
+            change();
+            render();
+          },
+          "danger",
+        ),
+      );
+      actions.lastChild.setAttribute("aria-label", `Remove ${c.name}`);
+    }
+    row.append(quantityLabel, info, actions);
+    container.append(row);
   }
-  panel.append(metrics);
-  const wrap = el("div", undefined, "table-wrap"),
-    table = el("table"),
-    head = el("thead"),
-    row = el("tr");
-  [
-    "Item / colour used",
-    "Quantity",
-    "Available",
-    "Unit cost",
-    "Total cost",
-    "Stock change if assembled (not applied)",
-  ].forEach((t) => row.append(el("th", t)));
-  head.append(row);
-  table.append(head);
-  const body = el("tbody");
-  for (const line of p.components) {
-    const r = el("tr"),
-      name = el("td", `${line.sku} · ${line.title}`);
-    name.append(el("small", line.id));
-    r.append(
-      name,
-      ...[
-        line.quantity,
-        line.available ?? "Unknown",
-        money(line.cost?.amount, line.cost?.currencyCode || p.currency),
-        money(line.extendedCost, p.currency),
-        line.proposedDelta,
-      ].map((x) => el("td", String(x))),
-    );
-    body.append(r);
-  }
-  table.append(body);
-  wrap.append(table);
-  panel.append(wrap);
-  panel.append(
-    el(
-      "p",
-      `Current completed kit stock: ${p.finished.available ?? "unknown"}. This test plans ${p.quantity} kit(s); none have been added to Shopify. Applied adjustments: 0.`,
-      `hint`,
-    ),
-  );
-  const notes = el("div", undefined, "warnings");
-  notes.append(
-    el(
-      "strong",
-      p.blockers.length
-        ? "Things to check before making real kits"
-        : "Test checks passed — stock is still unchanged",
-    ),
-  );
-  const list = el("ul");
-  [...p.blockers, ...p.warnings].forEach((note) => list.append(el("li", note)));
-  notes.append(list);
-  panel.append(
-    notes,
-    el(
-      "p",
-      `Preview ${p.id} · Recipe version ${p.recipeVersion} · Saved by ${p.staff.name} (${p.staff.id})`,
-      "hint",
-    ),
-  );
+  sync();
 }
-let pickerAction;
-function pick(title, action) {
-  pickerAction = action;
-  $("picker-title").textContent = title;
-  $("picker-results").replaceChildren();
-  $("picker-status").textContent = "";
-  $("picker-query").value = "";
+function openPicker(target, replaceId = null) {
+  state.picker = {
+    target,
+    replaceId,
+    mode: "product",
+    selected: new Map(),
+    cursor: null,
+    query: "",
+    serial: 0,
+  };
+  $("picker-title").textContent =
+    target === "bundle"
+      ? "Select bundle"
+      : replaceId
+        ? "Change component"
+        : "Add components";
+  $("picker-tabs").hidden = target === "bundle";
+  setMode("product");
   $("picker").showModal();
   $("picker-query").focus();
 }
-$("picker-search").addEventListener("submit", (event) => {
-  event.preventDefault();
-  perform(async () => {
-    $("picker-status").textContent = "Searching Shopify…";
-    const { variants } = await api(
-      `/variants?q=${encodeURIComponent($("picker-query").value)}`,
+function setMode(mode) {
+  const p = state.picker;
+  p.serial++;
+  p.mode = mode;
+  p.cursor = null;
+  p.selected.clear();
+  $("picker-results").replaceChildren();
+  $("more-results").hidden = true;
+  $("picker-query").value = "";
+  document
+    .querySelectorAll("[data-mode]")
+    .forEach((b) =>
+      b.setAttribute("aria-pressed", String(b.dataset.mode === mode)),
     );
-    remember(variants);
-    $("picker-results").replaceChildren();
-    for (const v of variants) {
-      const b = button(
-        `${v.sku || "No SKU"} · ${v.productTitle} / ${v.title}`,
-        async () => {
-          await pickerAction(v);
-          $("picker").close();
-        },
-        "picker-result",
-      );
-      b.append(el("small", `${v.status} · ${v.id}`));
-      $("picker-results").append(b);
-    }
-    $("picker-status").textContent = variants.length
-      ? `${variants.length} variants. Choose the exact item.`
-      : "No variants found. Try the exact SKU or parent product ID.";
-  }, event.currentTarget.querySelector("button"));
-});
-function renderRecipes() {
-  $("recipe-list").replaceChildren();
-  if (!state.recipes.length)
-    $("recipe-list").append(el("p", "No recipes saved yet."));
-  for (const recipe of state.recipes) {
-    const row = el("div", undefined, "recipe-row"),
-      text = el("div");
-    text.append(
-      el("strong", recipe.name),
-      el(
-        "p",
-        `${recipe.components.length} components · ${recipe.finishedVariantIds.length} completed kit choices · version ${recipe.version}`,
-      ),
-    );
-    row.append(text);
-    row.append(
-      button(
-        state.staff.role === "manager" ? "Edit recipe" : "Use recipe",
-        async () => {
-          if (state.staff.role === "manager") await editRecipe(recipe);
-          else {
-            $("assembly-recipe").value = recipe.id;
-            changeRecipe();
-            tab("assembly");
-          }
-        },
-      ),
-    );
-    $("recipe-list").append(row);
-  }
+  const family = mode === "prefix";
+  $("search-label").textContent = family
+    ? "Family SKU / beginning of SKU"
+    : mode === "exact_sku"
+      ? "Exact SKU"
+      : "Product name or SKU";
+  $("picker-query").placeholder = family
+    ? "e.g. BOX_1_ or RB_RC_M"
+    : mode === "exact_sku"
+      ? "e.g. PAPK_RDY"
+      : "e.g. rolling box or grinder";
+  $("picker-help").textContent =
+    p.target === "bundle"
+      ? "Choose the existing Shopify product that represents your bundle."
+      : family
+        ? "Use the shared beginning of the SKUs. Check the matching items before adding the family."
+        : mode === "exact_sku"
+          ? "Only this item qualifies. Use this for a fixed component or a different price."
+          : "Select a product once to allow all its colours and variants, including new ones added later.";
+  status("", false, true);
+  sync();
 }
-async function editRecipe(recipe) {
-  state.draft = structuredClone(recipe);
-  const ids = [
-    ...new Set([
-      ...recipe.finishedVariantIds,
-      ...recipe.components.flatMap((c) => [
-        ...Object.values(c.bindings || {}),
-        ...(c.rule.variantIds || []),
-        ...(c.rule.excludeVariantIds || []),
-      ]),
-    ]),
-  ];
-  for (let i = 0; i < ids.length; i += 100)
-    remember(
-      (await post("/variants/resolve", { ids: ids.slice(i, i + 100) }))
-        .variants,
-    );
-  $("recipe-editor").hidden = false;
-  renderEditor();
+function closePicker() {
+  if (state.busy) return;
+  state.picker = null;
+  $("picker").close();
 }
-function syncDraft() {
-  if (!state.draft) return;
-  state.draft.name = $("recipe-name").value;
-  state.draft.inventoryOwnership = $("ownership").value;
-}
-function renderEditor() {
-  const draft = state.draft;
-  $("editor-title").textContent = draft.id
-    ? `Edit recipe · version ${draft.version}`
-    : "New recipe";
-  $("recipe-name").value = draft.name;
-  $("ownership").value = draft.inventoryOwnership;
-  $("finished-chips").replaceChildren();
-  for (const id of draft.finishedVariantIds) {
-    const chip = el("span", labelFor(id), "chip");
-    chip.append(
-      button(
-        "×",
-        () => {
-          syncDraft();
-          draft.finishedVariantIds = draft.finishedVariantIds.filter(
-            (v) => v !== id,
-          );
-          draft.components.forEach((c) => {
-            delete c.bindings?.[id];
-          });
-          renderEditor();
-        },
-        "",
-      ),
-    );
-    $("finished-chips").append(chip);
-  }
-  $("recipe-components").replaceChildren();
-  draft.components.forEach((component, index) =>
-    renderEditorComponent(component, index),
-  );
-}
-function field(title, node) {
-  const label = el("label", title);
-  label.append(node);
-  return label;
-}
-function textInput(value, onChange) {
-  const input = el("input");
-  input.value = value || "";
-  input.addEventListener("input", () => onChange(input.value));
-  return input;
-}
-function renderEditorComponent(c, index) {
-  const box = el("div", undefined, "component");
-  box.append(el("h3", `Component ${index + 1}`));
-  const grid = el("div", undefined, "grid");
-  grid.append(
-    field(
-      "Component name",
-      textInput(c.name, (v) => (c.name = v)),
-    ),
-  );
-  const quantity = textInput(c.quantity, (v) => (c.quantity = Number(v)));
-  quantity.type = "number";
-  quantity.min = "1";
-  quantity.max = "1000";
-  grid.append(field("Quantity per kit", quantity));
-  box.append(grid);
-  const type = el("select");
-  fill(type, [
-    ["exact_sku", "One specific SKU"],
-    ["product", "All variants of one product (any colour)"],
-    ["prefix", "SKUs starting with a code"],
-    ["group", "Only items I select"],
-  ]);
-  type.value = c.rule.type;
-  type.addEventListener("change", () => {
-    syncDraft();
-    c.rule = {
-      type: type.value,
-      value: "",
-      variantIds: [],
-      excludeVariantIds: [],
-    };
-    c.bindings = {};
-    renderEditor();
+function selectionRow(key, value, title, subtitle, tag) {
+  const p = state.picker,
+    row = el("label", undefined, "pick-row"),
+    input = el("input");
+  input.type = p.target === "bundle" || p.replaceId ? "radio" : "checkbox";
+  input.name = "picker-choice";
+  input.checked = p.selected.has(key);
+  input.setAttribute("aria-label", title);
+  input.addEventListener("change", () => {
+    if (input.type === "radio") p.selected.clear();
+    if (input.checked) p.selected.set(key, value);
+    else p.selected.delete(key);
+    sync();
   });
-  box.append(field("Which items are allowed?", type));
-  if (c.rule.type === "product")
-    box.append(el("p", "Find the product using any of its colours. All its variants are included, except any exclusions or colour matches below. Each chosen item's own stock and cost are checked.", "hint"));
-  if (c.rule.type === "group") {
-    box.append(
-      el(
-        "p",
-        (c.rule.variantIds || []).map(labelFor).join(" • ") ||
-          "No variants added.",
-        "hint",
-      ),
-      button("Add eligible variant", () =>
-        pick("Add eligible variant", (v) => {
-          syncDraft();
-          c.rule.variantIds = [
-            ...new Set([...(c.rule.variantIds || []), v.id]),
-          ];
-          renderEditor();
-        }),
-      ),
-      button(
-        "Clear group",
-        () => {
-          syncDraft();
-          c.rule.variantIds = [];
-          renderEditor();
-        },
-        "quiet",
-      ),
+  const text = el("span", undefined, "grow");
+  text.append(el("span", title, "name"), el("span", subtitle, "product-meta"));
+  row.append(input, text);
+  if (tag) row.append(el("span", tag, "tag"));
+  return row;
+}
+async function search(more = false) {
+  const p = state.picker;
+  if (!p) return;
+  const serial = ++p.serial,
+    q = more ? p.query : $("picker-query").value.trim();
+  if (!q) return;
+  if (!more) {
+    p.query = q;
+    p.cursor = null;
+    $("picker-results").replaceChildren();
+  }
+  status("Searching Shopify…", false, true);
+  if (p.mode === "product") {
+    const data = await api(
+      `/products?q=${encodeURIComponent(q)}${more && p.cursor ? `&after=${encodeURIComponent(p.cursor)}` : ""}`,
+    );
+    if (p !== state.picker || p.serial !== serial) return;
+    let shown = 0;
+    for (const product of data.products) {
+      if (p.target !== "bundle" && product.id === state.draft.bundleProductId)
+        continue;
+      shown++;
+      $("picker-results").append(
+        selectionRow(
+          product.id,
+          { product },
+          product.title,
+          `${product.sku || "No SKU"}${product.variantCount > 1 ? ` · ${product.variantCount} variants` : ""}`,
+          product.status === "DRAFT" ? "Draft" : "",
+        ),
+      );
+    }
+    p.cursor = data.nextCursor;
+    $("more-results").hidden = !p.cursor;
+    status(
+      shown
+        ? ""
+        : "No matching products on this page. Try a different name or SKU.",
+      false,
+      true,
     );
   } else {
-    box.append(
-      field(
-        c.rule.type === "product"
-          ? "Parent product ID"
-          : c.rule.type === "prefix"
-            ? "Literal SKU prefix (for example RB_RC_M*)"
-            : "Exact SKU",
-        textInput(c.rule.value, (v) => (c.rule.value = v)),
-      ),
-    );
-    if (c.rule.type !== "prefix")
-      box.append(
-        button(
-          "Find product / variant",
-          () =>
-            pick("Choose component product", (v) => {
-              syncDraft();
-              c.rule.value = c.rule.type === "product" ? v.productId : v.sku;
-              renderEditor();
-            }),
-          "quiet",
-        ),
+    const result = await api("/component-choices", {
+      rule: { type: p.mode, value: q },
+    });
+    if (p !== state.picker || p.serial !== serial) return;
+    if (
+      result.variants.some((v) => v.productId === state.draft.bundleProductId)
+    )
+      throw new Error(
+        "This family includes the bundle product itself. Use a narrower family SKU.",
       );
-  }
-  box.append(
-    el(
-      "p",
-      `Excluded variants: ${(c.rule.excludeVariantIds || []).map(labelFor).join(" • ") || "None"}`,
-      "hint",
-    ),
-    button(
-      "Exclude a variant",
-      () =>
-        pick("Exclude a variant", (v) => {
-          syncDraft();
-          c.rule.excludeVariantIds = [
-            ...new Set([...(c.rule.excludeVariantIds || []), v.id]),
-          ];
-          renderEditor();
-        }),
-      "quiet",
-    ),
-    button(
-      "Clear exclusions",
-      () => {
-        syncDraft();
-        c.rule.excludeVariantIds = [];
-        renderEditor();
-      },
-      "quiet",
-    ),
-  );
-  const mode = el("select");
-  fill(mode, [
-    ["any", "Any allowed colour / item"],
-    ["by_finished", "Match this item to the completed kit colour"],
-  ]);
-  mode.value = c.bindingMode || "any";
-  mode.addEventListener("change", () => {
-    syncDraft();
-    c.bindingMode = mode.value;
-    c.bindings ||= {};
-    renderEditor();
-  });
-  box.append(field("Does this item need to match the kit colour?", mode));
-  if (c.bindingMode === "by_finished")
-    for (const finished of state.draft.finishedVariantIds) {
-      const binding = el("div", undefined, "binding");
-      binding.append(
-        el("small", `For ${labelFor(finished)}`),
-        el(
-          "p",
-          c.bindings?.[finished]
-            ? labelFor(c.bindings[finished])
-            : "Choose the matching component.",
-        ),
-        button(
-          "Choose matching component",
-          () =>
-            pick("Choose matching component", (v) => {
-              syncDraft();
-              c.bindings ||= {};
-              c.bindings[finished] = v.id;
-              renderEditor();
-            }),
-          "quiet",
-        ),
-      );
-      box.append(binding);
+    p.selected.clear();
+    if (!result.variants.length) {
+      status("No matching items. Check the SKU and try again.", false, true);
+      sync();
+      return;
     }
-  box.append(
-    button(
-      "Remove component",
-      () => {
-        syncDraft();
-        state.draft.components.splice(index, 1);
-        renderEditor();
-      },
-      "quiet",
-    ),
-  );
-  $("recipe-components").append(box);
+    const family = p.mode === "prefix",
+      name = family
+        ? `${result.rule.value} · SKU family`
+        : itemName(result.variants[0]);
+    const candidate = { rule: result.rule, choices: result.variants, name };
+    const card = el("div", undefined, "family-result");
+    card.append(
+      selectionRow(
+        result.rule.value,
+        candidate,
+        name,
+        `${result.variants.length} eligible item${result.variants.length === 1 ? "" : "s"}`,
+        family ? "Any one" : "Exact item",
+      ),
+      choiceList(result.variants),
+    );
+    $("picker-results").append(card);
+    status("Check the matches, then select this component.", false, true);
+  }
+  sync();
 }
-$("new-recipe").addEventListener("click", () =>
-  perform(() =>
-    editRecipe({
-      name: "",
-      finishedVariantIds: [],
-      inventoryOwnership: "unconfirmed",
-      components: [],
-    }),
-  ),
-);
-$("crown-template").addEventListener("click", () =>
-  perform(async () => {
-    status("Resolving Crown SKUs and colour bindings against Shopify…");
-    const { recipe } = await api("/templates/crown");
-    await editRecipe(recipe);
-    status("Crown recipe loaded. Review it and save. Stock is unchanged.");
-  }, $("crown-template")),
-);
-$("add-finished").addEventListener("click", () =>
-  pick("Choose completed kit", (v) => {
-    syncDraft();
-    if (!state.draft.finishedVariantIds.includes(v.id))
-      state.draft.finishedVariantIds.push(v.id);
-    renderEditor();
+async function confirmPicker() {
+  const p = state.picker,
+    d = state.draft;
+  if (!p?.selected.size || !d) return;
+  const picked = [];
+  for (const selected of p.selected.values()) {
+    if (selected.product) {
+      const result = await api("/component-choices", {
+        rule: { type: "product", value: selected.product.id },
+      });
+      picked.push({
+        rule: result.rule,
+        choices: result.variants,
+        name: selected.product.title,
+        product: selected.product,
+      });
+    } else picked.push(selected);
+  }
+  if (state.picker !== p || state.draft !== d) return;
+  if (picked.some((v) => !v.choices.length))
+    throw new Error(
+      "A selected product no longer has eligible items. Search again.",
+    );
+  if (p.target === "bundle") {
+    const first = picked[0];
+    if (
+      state.recipes.some(
+        (recipe) =>
+          recipe.id !== d.id &&
+          recipe.finishedVariantIds.some((id) =>
+            first.choices.some((v) => v.id === id),
+          ),
+      )
+    ) {
+      throw new Error(
+        "This product already has a saved bundle. Go back to Your bundles and edit that setup.",
+      );
+    }
+    if (first.choices.length > 50)
+      throw new Error(
+        "This setup supports bundle products with up to 50 existing variants.",
+      );
+    if (
+      d.components.some((c) =>
+        c.choices?.some((v) => v.productId === first.product.id),
+      )
+    )
+      throw new Error(
+        "That product is already a component. Remove it from Components before choosing it as the bundle.",
+      );
+    if (
+      d.components.some((c) => c.bindingMode === "by_finished") &&
+      d.bundleProductId !== first.product.id
+    )
+      throw new Error(
+        "Choose 'Allow any eligible colour' on the linked components before changing the bundle product.",
+      );
+    d.name = first.product.title;
+    d.bundleProductId = first.product.id;
+    d.finished = first.choices;
+    d.finishedVariantIds = first.choices.map((v) => v.id);
+  } else {
+    const proposed = d.components.filter((c) => c.id !== p.replaceId);
+    for (const item of picked) {
+      if (item.choices.some((v) => v.productId === d.bundleProductId))
+        throw new Error("The bundle product cannot also be a component.");
+      const ids = new Set(item.choices.map((v) => v.id));
+      if (proposed.some((c) => c.choices?.some((v) => ids.has(v.id))))
+        throw new Error(
+          "One of these items is already included. Increase its quantity instead of adding an overlapping component.",
+        );
+      const previous = d.components.find((c) => c.id === p.replaceId);
+      proposed.push({
+        id: previous?.id || crypto.randomUUID(),
+        name: item.name,
+        quantity: previous?.quantity || 1,
+        rule: item.rule,
+        choices: item.choices,
+        bindingMode: "any",
+        bindings: {},
+      });
+    }
+    if (proposed.length > 30) throw new Error("Use at most 30 component rows.");
+    d.components = proposed;
+  }
+  change();
+  state.picker = null;
+  $("picker").close();
+  render();
+}
+async function save() {
+  const d = state.draft;
+  if (!d?.bundleProductId)
+    throw new Error("Select one bundle product before saving.");
+  const recipe = {
+    name: d.name,
+    bundleProductId: d.bundleProductId,
+    finishedVariantIds: d.finishedVariantIds,
+    inventoryOwnership: d.inventoryOwnership,
+    components: d.components.map(({ choices, issue, ...c }) => c),
+  };
+  const result = await api(
+    d.id ? `/recipes/${encodeURIComponent(d.id)}` : "/recipes",
+    { recipe, ...(d.id ? { expectedVersion: d.version } : {}) },
+    d.id ? "PUT" : "POST",
+  );
+  state.dirty = false;
+  const index = state.recipes.findIndex((r) => r.id === result.recipe.id);
+  if (index === -1) state.recipes.unshift(result.recipe);
+  else state.recipes[index] = result.recipe;
+  showList();
+  status(
+    `Saved “${result.recipe.name}”. You can reopen it below. Shopify stock is unchanged.`,
+  );
+}
+function leaveEditor() {
+  if (state.dirty) $("discard-dialog").showModal();
+  else {
+    showList();
+    status();
+  }
+}
+$("login-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  run(async () => {
+    const form = new FormData(event.currentTarget);
+    const session = await api("/login", {
+      username: form.get("username"),
+      password: form.get("password"),
+    });
+    event.currentTarget?.reset();
+    $("login-form").reset();
+    await signedIn(session);
+  });
+});
+$("logout").addEventListener("click", () =>
+  run(async () => {
+    if (state.dirty) {
+      status("Save or discard your changes before signing out.", true);
+      return;
+    }
+    await api("/logout", {});
+    login();
+    status("Signed out.");
   }),
 );
-$("add-component").addEventListener("click", () => {
-  syncDraft();
-  state.draft.components.push({
-    id: crypto.randomUUID(),
-    name: "",
-    quantity: 1,
-    rule: { type: "exact_sku", value: "", excludeVariantIds: [] },
-    bindingMode: "any",
-    bindings: {},
-  });
-  renderEditor();
-});
-$("cancel-edit").addEventListener("click", () => {
-  $("recipe-editor").hidden = true;
-  state.draft = null;
-});
-$("recipe-editor").addEventListener("submit", (event) => {
+$("new-bundle").addEventListener("click", () => run(start));
+$("select-bundle").addEventListener("click", () =>
+  run(() => openPicker("bundle")),
+);
+$("add-components").addEventListener("click", () =>
+  run(() => openPicker("component")),
+);
+$("bundle-editor").addEventListener("submit", (event) => {
   event.preventDefault();
-  perform(async () => {
-    syncDraft();
-    const draft = state.draft;
-    const { recipe } = await api(
-      draft.id ? `/recipes/${draft.id}` : "/recipes",
-      {
-        method: draft.id ? "PUT" : "POST",
-        body: JSON.stringify({ recipe: draft, expectedVersion: draft.version }),
-      },
-    );
-    $("recipe-editor").hidden = true;
-    await loadRecipes();
-    $("assembly-recipe").value = recipe.id;
-    changeRecipe();
-    status(`Saved ${recipe.name}, version ${recipe.version}.`);
-  }, event.currentTarget.querySelector("[type=submit]"));
+  run(save);
 });
-async function loadHistory(older = false) {
-  const cursor = older ? state.historyCursor : null;
-  const { previews, nextCursor } = await api(
-    `/previews${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`,
-  );
-  state.history = older ? [...state.history, ...previews] : previews;
-  state.historyCursor = nextCursor;
-  $("history-list").replaceChildren();
-  if (!state.history.length)
-    $("history-list").append(el("p", "No previews saved yet."));
-  for (const p of state.history) {
-    const row = el("div", undefined, "history-row"),
-      text = el("div");
-    text.append(
-      el("strong", `${p.quantity} × ${p.finished.sku}`),
-      el(
-        "p",
-        `${new Date(p.createdAt).toLocaleString("en-GB")} · ${p.location.name} · ${p.staff.name}`,
-      ),
-      el("small", `PREVIEW ONLY · ${p.blockers.length} issues · ${p.id}`),
-    );
-    row.append(
-      text,
-      button("View", () => {
-        renderPreview(p, "history-detail");
-        $("history-detail").scrollIntoView({ behavior: "smooth" });
-      }),
-    );
-    $("history-list").append(row);
+$("picker-search").addEventListener("submit", (event) => {
+  event.preventDefault();
+  run(() => search());
+});
+$("more-results").addEventListener("click", () => run(() => search(true)));
+$("confirm-picker").addEventListener("click", () => run(confirmPicker));
+for (const node of document.querySelectorAll("[data-mode]"))
+  node.addEventListener("click", () => {
+    if (!state.busy) setMode(node.dataset.mode);
+  });
+for (const id of ["close-picker", "cancel-picker"])
+  $(id).addEventListener("click", closePicker);
+$("picker").addEventListener("cancel", (event) => {
+  if (state.busy) event.preventDefault();
+  else state.picker = null;
+});
+for (const id of ["back", "discard"])
+  $(id).addEventListener("click", leaveEditor);
+$("keep-editing").addEventListener("click", () => $("discard-dialog").close());
+$("confirm-discard").addEventListener("click", () => {
+  $("discard-dialog").close();
+  showList();
+  status();
+});
+window.addEventListener("beforeunload", (event) => {
+  if (state.dirty) {
+    event.preventDefault();
+    event.returnValue = "";
   }
-  $("older-history").hidden = !nextCursor;
-}
-$("refresh-history").addEventListener("click", () =>
-  perform(() => loadHistory()),
-);
-$("older-history").addEventListener("click", () =>
-  perform(() => loadHistory(true)),
-);
-perform(async () => {
+});
+run(async () => {
+  status("Loading your bundles…");
   try {
-    await enter(await api("/session"));
+    await signedIn(await api("/session"));
   } catch (error) {
-    showLogin();
-    if (!error.message.startsWith("Sign in")) status(error.message, true);
+    login();
+    status(error.status === 401 ? "" : error.message, error.status !== 401);
   }
 });

@@ -37,7 +37,7 @@ const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } }),
 page.on("pageerror", (e) => errors.push(e.message));
 page.setDefaultTimeout(15000);
 try {
-  await page.goto(origin + "/bundle-builder.html");
+  await page.goto(origin + "/assembly-history.html");
   await page.getByLabel("Staff ID", { exact: true }).fill(manager.id);
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
@@ -55,9 +55,7 @@ try {
   await page.waitForFunction(() =>
     document.getElementById("status").textContent.includes("version 1"),
   );
-  await page
-    .getByRole("button", { name: "Test a kit", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Test a kit", exact: true }).click();
   await page.locator("#assembly-finished").selectOption(vid(101));
   await page.locator("#assembly-location").selectOption(locationId);
   await page.locator("#assembly-quantity").fill("2");
@@ -144,7 +142,9 @@ try {
   await component
     .getByLabel("Component name", { exact: true })
     .fill("Assorted grinder");
-  await component.getByLabel("Which items are allowed?").selectOption("product");
+  await component
+    .getByLabel("Which items are allowed?")
+    .selectOption("product");
   await component.getByLabel("Parent product ID").fill("8327686553754");
   await page.getByRole("button", { name: "Check & save recipe" }).click();
   await page.waitForFunction(() =>
@@ -156,7 +156,9 @@ try {
   // The new till simulator uses the existing session and never saves an assembly.
   await page.getByRole("link", { name: "Scan a deal · test" }).click();
   await page.locator("#workspace").waitFor({ state: "visible" });
-  const crown = (await ctx.store.listRecipes()).find((r) => r.name.includes("Crown"));
+  const crown = (await ctx.store.listRecipes()).find((r) =>
+    r.name.includes("Crown"),
+  );
   await page.locator("#deal").selectOption(crown.id);
   await page.locator("#location").selectOption(locationId);
   await page.getByRole("button", { name: "Start scanning" }).click();
@@ -166,27 +168,62 @@ try {
     await page.locator("#scan").fill(sku);
     await page.locator("#scan").press("Enter");
   }
-  await page.waitForFunction(() => document.getElementById("result-title").textContent.includes("1 complete deal"));
-  assert.match(await page.locator("#totals").textContent(), /Test total£14\.99/);
+  await page.waitForFunction(() =>
+    document
+      .getElementById("result-title")
+      .textContent.includes("1 complete deal"),
+  );
+  assert.match(
+    await page.locator("#totals").textContent(),
+    /Test total£14\.99/,
+  );
   assert.equal(await page.locator("#basket .basket-line").count(), 4);
-  await page.getByRole("button", { name: "Remove one PAPK_RDY", exact: true }).click();
-  await page.waitForFunction(() => document.getElementById("result-title").textContent === "Keep scanning…");
-  assert.match(await page.locator("#totals").textContent(), /Test total£44\.97/);
+  await page
+    .getByRole("button", { name: "Remove one PAPK_RDY", exact: true })
+    .click();
+  await page.waitForFunction(
+    () =>
+      document.getElementById("result-title").textContent === "Keep scanning…",
+  );
+  assert.match(
+    await page.locator("#totals").textContent(),
+    /Test total£44\.97/,
+  );
   await page.getByText("No scanner? Choose an item", { exact: true }).click();
-  await page.getByRole("button", { name: "Add Randy's Gold papers", exact: true }).click();
-  await page.waitForFunction(() => document.getElementById("result-title").textContent.includes("1 complete deal"));
+  await page
+    .getByRole("button", { name: "Add Randy's Gold papers", exact: true })
+    .click();
+  await page.waitForFunction(() =>
+    document
+      .getElementById("result-title")
+      .textContent.includes("1 complete deal"),
+  );
   await page.locator("#scan").fill("DOES-NOT-EXIST");
   await page.locator("#scan").press("Enter");
-  await page.waitForFunction(() => document.getElementById("status").textContent.includes("not found"));
+  await page.waitForFunction(() =>
+    document.getElementById("status").textContent.includes("not found"),
+  );
   assert.equal(await page.locator("#basket .basket-line").count(), 4);
   for (const width of [1440, 390, 320]) {
     await page.setViewportSize({ width, height: 1000 });
-    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `Deal page fits ${width}px`);
-    await page.screenshot({ path: `test-results/deal-${width}.png`, fullPage: true });
+    assert.ok(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth + 1,
+      ),
+      `Deal page fits ${width}px`,
+    );
+    await page.screenshot({
+      path: `test-results/deal-${width}.png`,
+      fullPage: true,
+    });
   }
   assert.equal((await ctx.store.listPreviews()).length, 1);
   await page.getByRole("button", { name: "Clear basket" }).click();
-  await page.waitForFunction(() => document.getElementById("result-title").textContent === "Scan your first item");
+  await page.waitForFunction(
+    () =>
+      document.getElementById("result-title").textContent ===
+      "Scan your first item",
+  );
   await page.locator("#logout").click();
   await page.locator("#login-panel").waitFor({ state: "visible" });
   assert.deepEqual(errors, []);

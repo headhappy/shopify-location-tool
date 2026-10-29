@@ -12,66 +12,31 @@
     <script type="module" src="/bundle-builder.js"></script>
   </head>
   <body>
-    <header>
-      <a class="brand" href="/index.html"
-        >HEAD HAPPY<span>Stock Control + Locations</span></a
-      >
+    <header class="topbar">
+      <a class="brand" href="/index.html">HEAD HAPPY</a>
       <nav aria-label="Application">
         <a href="/index.html">Locations</a
-        ><a href="/label-station.html">Label Station</a
-        ><a href="/api/shopify-stock.csv">Stock export</a
+        ><a href="/label-station.html">Labels</a
         ><a href="/bundle-builder.html" aria-current="page">Bundle Builder</a>
-        <a href="/deal-tester.html">Scan a deal · test</a>
       </nav>
+      <div id="account" hidden>
+        <span id="staff-name"></span
+        ><button id="logout" type="button">Sign out</button>
+      </div>
     </header>
     <main>
-      <div class="title-row">
+      <div class="page-heading">
         <div>
-          <p class="eyebrow">PHYSICAL KIT PLANNING</p>
+          <p class="eyebrow">YOUR PRODUCTS. YOUR COMBINATIONS.</p>
           <h1>Bundle Builder</h1>
-          <p>Plan a kit, choose its contents and save a test.</p>
+          <p>Choose a bundle product. Add what goes inside. Save.</p>
         </div>
-        <span class="badge">TEST MODE</span>
+        <span class="badge">SETUP COPY</span>
       </div>
-      <aside class="notice">
-        <strong>Test safely. Shopify stock stays unchanged.</strong
-        ><span
-          >Your recipes and test previews are saved in this app. Saving a test
-          does not create a Shopify product or order, reserve stock or change
-          any inventory.</span
-        >
-      </aside>
-      <section class="card start-guide" aria-labelledby="start-heading">
-        <p><a href="/deal-tester.html"><strong>New: try scanning a mix-and-match deal →</strong></a></p>
-        <h2 id="start-heading">Start here</h2>
-        <p>Try one kit first. Use the same recipe again for your next test.</p>
-        <ol class="start-steps">
-          <li><strong>Choose a kit</strong><span>Sign in, open Test a kit and choose
-            a kit recipe, completed kit colour and store. Start with 1 kit.</span></li>
-          <li><strong>Choose what goes in</strong><span>Click Show component choices.
-            Choose or scan the actual items, then check their quantities.</span></li>
-          <li><strong>Save and review</strong><span>Click Save test preview. Review
-            the costs and stock checks. Find it again in Saved tests &amp; export.</span></li>
-        </ol>
-        <details>
-          <summary>Where does the kit exist, and how do colours work?</summary>
-          <p>The completed kit is an existing product and SKU in Shopify, such as
-            Crown Rolling Kit / Black. A recipe links to that kit and describes
-            its contents. Your saved tests live only in this app; they do not
-            record a completed assembly in Shopify.</p>
-          <p>One recipe can allow every colour of a component product. You do not
-            need a separate recipe for each combination. Choose the actual colour
-            used so its stock and cost can be checked, even when all colours have
-            the same selling price.</p>
-          <p>You can reuse a recipe for many batches. The number of kits you could
-            make depends on the available component stock at your chosen store.
-            Test mode does not reserve that stock.</p>
-        </details>
-      </section>
       <p id="status" role="status" aria-live="polite"></p>
-      <section id="login-panel" class="card narrow">
+      <section id="login-panel" class="card login" hidden>
         <h2>Staff sign in</h2>
-        <p>Use your individual Bundle Builder account.</p>
+        <p>Use your existing Bundle Builder login.</p>
         <form id="login-form">
           <label
             >Staff ID<input
@@ -86,187 +51,153 @@
               autocomplete="current-password"
               required
               maxlength="256" /></label
-          ><button type="submit">Sign in</button>
+          ><button type="submit" class="primary">Sign in</button>
         </form>
       </section>
       <div id="workspace" hidden>
-        <div class="workspace-bar">
-          <div class="tabs" role="group" aria-label="Bundle Builder sections">
-            <button type="button" data-tab="assembly" aria-pressed="true">
-              Test a kit</button
-            ><button type="button" data-tab="recipes" aria-pressed="false">
-              Kit recipes</button
-            ><button type="button" data-tab="history" aria-pressed="false">
-              Saved tests &amp; export
+        <section id="bundle-list-panel">
+          <div class="section-heading">
+            <h2>Your bundles</h2>
+            <button id="new-bundle" type="button" class="primary">
+              Create bundle
             </button>
           </div>
-          <div>
-            <span id="staff-name"></span>
-            <button id="logout" class="quiet" type="button">Sign out</button>
-          </div>
-        </div>
-        <section id="assembly-panel">
-          <div class="card">
-            <div class="section-title">
-              <span class="step">1</span>
-              <div>
-                <h2>Choose the kit</h2>
-                <p>
-                  Choose the existing Shopify kit you want to test and the store
-                  whose stock you want to check.
-                </p>
-              </div>
-            </div>
-            <div class="grid">
-              <label>Kit recipe<select id="assembly-recipe"></select></label
-              ><label
-                >Completed kit colour<select id="assembly-finished"></select></label
-              ><label
-                >Store<select
-                  id="assembly-location"
-                ></select></label
-              ><label
-                >Number of kits<input
-                  id="assembly-quantity"
-                  type="number"
-                  min="1"
-                  max="10000"
-                  value="1"
-                  step="1"
-              /></label>
-            </div>
-            <p class="hint">Every kit in this test uses the same component choices.
-              For a different colour mix, save another test with the same recipe.</p>
-            <button id="resolve" type="button">Show component choices</button>
-          </div>
-          <div id="components-panel" class="card" hidden>
-            <div class="section-title">
-              <span class="step">2</span>
-              <div>
-                <h2>Choose what goes in</h2>
-                <p>
-                  Choose the actual colour or scan its barcode with your
-                  scanner. Quantities below include every kit.
-                </p>
-              </div>
-            </div>
-            <div id="assembly-components"></div>
-            <label class="check"
-              ><input id="components-confirmed" type="checkbox" />I have checked
-              every actual component and quantity.</label
-            ><button id="preview" type="button">Save test preview</button>
-          </div>
-          <div id="preview-panel" class="card" hidden></div>
+          <div id="bundle-list"></div>
         </section>
-        <section id="recipes-panel" hidden>
-          <div class="card">
-            <div class="section-title">
-              <div>
-                <h2>Saved kit recipes</h2>
-                <p>
-                  A manager sets which items are allowed. Staff reuse the recipe
-                  and choose the actual items for each test.
-                </p>
-              </div>
-            </div>
-            <div id="recipe-list"></div>
-            <div id="manager-actions" class="actions" hidden>
-              <button id="new-recipe" type="button">New recipe</button
-              ><button id="crown-template" type="button" class="secondary">
-                Start with Crown Rolling Kit
+        <form id="bundle-editor" class="card" hidden>
+          <div class="section-heading">
+            <h2 id="editor-title">Set up new bundle</h2>
+            <button id="back" type="button" class="quiet">
+              Back to bundles
+            </button>
+          </div>
+          <section class="editor-section">
+            <h3>Bundle</h3>
+            <p class="hint">
+              Select the product you already created in Shopify.
+            </p>
+            <div id="bundle-product" class="product-summary"></div>
+            <button id="select-bundle" type="button">Select bundle</button>
+          </section>
+          <section class="editor-section">
+            <h3>Components</h3>
+            <p class="hint">
+              Add each product once. All its colours qualify unless you choose a
+              specific item.
+            </p>
+            <div id="components"></div>
+            <button id="add-components" type="button" disabled>
+              Add components
+            </button>
+          </section>
+          <div class="save-bar">
+            <p>Saved here. Automatic Shopify stock updates are not enabled.</p>
+            <div class="actions">
+              <button id="discard" type="button">Discard</button
+              ><button id="save-bundle" type="submit" class="primary" disabled>
+                Save bundle
               </button>
             </div>
           </div>
-          <form id="recipe-editor" class="card" hidden>
-            <h2 id="editor-title">New recipe</h2>
-            <label
-              >Recipe name<input id="recipe-name" required maxlength="160"
-            /></label>
-            <h3>Completed kits in Shopify</h3>
-            <p class="hint">
-              Choose the existing kit products and colours this recipe is for.
-              This does not create products or change their stock in Shopify.
-            </p>
-            <div id="finished-chips" class="chips"></div>
-            <button id="add-finished" type="button" class="secondary">
-              Find completed kit</button
-            ><label
-              >Who manages this finished stock?<select id="ownership">
-                <option value="unconfirmed">Not yet confirmed</option>
-                <option value="physical">
-                  Physical kits — excluded from Bundles.app and other stock
-                  automation
-                </option>
-                <option value="external">
-                  Bundles.app or another stock automation
-                </option>
-              </select></label
+        </form>
+        <details class="help">
+          <summary>How do colours and stock work?</summary>
+          <p>
+            <strong>One row is one component choice.</strong> If a row says
+            quantity 1 and allows red, blue and green grinders, the deal
+            contains one of those grinders—not all three.
+          </p>
+          <p>
+            Choose <strong>Product · all colours</strong> for normal Shopify
+            variants. Choose <strong>SKU family</strong> when colours are
+            separate products, for example <code>BOX_1_</code> includes
+            <code>BOX_1_RED</code> and <code>BOX_1_BLUE</code>. New matching
+            items qualify automatically. Choose
+            <strong>Specific item</strong> for a fixed SKU or a differently
+            priced option.
+          </p>
+          <p>
+            This copy saves your bundle definitions in this app. It does not
+            update Bundles.app or make these definitions live on your till.
+            Selling a single bundle barcode cannot identify a random colour; the
+            actual items must be identified before their stock can be deducted.
+          </p>
+        </details>
+        <details class="help">
+          <summary>Earlier tools and saved tests</summary>
+          <p>
+            <a href="/assembly-history.html"
+              >Open earlier assembly previews and history</a
             >
-            <p class="hint">
-              This records the manager's declaration. It cannot inspect or
-              change Bundles.app configuration.
-            </p>
-            <h3>What goes in each kit</h3>
-            <p class="hint">For interchangeable colours, choose All variants of
-              one product. This includes that product's variants without adding
-              them one by one. Use a specific SKU or a selected list when only
-              certain items belong in this kit.</p>
-            <div id="recipe-components"></div>
-            <button id="add-component" type="button" class="secondary">
-              Add component
-            </button>
-            <div class="actions">
-              <button type="submit">Check &amp; save recipe</button
-              ><button id="cancel-edit" type="button" class="quiet">
-                Cancel
-              </button>
-            </div>
-          </form>
-        </section>
-        <section id="history-panel" hidden>
-          <div class="card">
-            <h2>Saved test previews</h2>
-            <p>
-              Each test records who saved it, the kit recipe, store, quantities,
-              costs and actual items chosen. These records are saved in this app,
-              not in Shopify. No stock has been added, reserved or deducted.
-            </p>
-            <div class="actions">
-              <button id="refresh-history" type="button" class="secondary">
-                Refresh saved tests</button
-              ><a class="button" href="/api/bundles/previews.csv">Export CSV</a>
-            </div>
-            <p class="hint">
-              CSV exports the full preview history for Microsoft Access. It is a
-              planning record, not an inventory adjustment import.
-            </p>
-            <div id="history-list"></div>
-            <button id="older-history" type="button" class="quiet" hidden>
-              Load older tests
-            </button>
-          </div>
-          <div id="history-detail" class="card" hidden></div>
-        </section>
+            · <a href="/deal-tester.html">Open deal basket checks</a>
+          </p>
+          <p>
+            The separately installed Crown POS pilot still uses its original
+            fixed Crown deal. Saving here does not reconfigure that pilot.
+          </p>
+        </details>
       </div>
     </main>
-    <dialog id="picker">
-      <form method="dialog">
-        <button class="close quiet" aria-label="Close variant search">
+    <dialog id="picker" aria-labelledby="picker-title">
+      <div class="dialog-heading">
+        <h2 id="picker-title">Select bundle</h2>
+        <button
+          id="close-picker"
+          class="quiet"
+          type="button"
+          aria-label="Close product picker"
+        >
           Close
         </button>
-      </form>
-      <h2 id="picker-title">Find a variant</h2>
-      <form id="picker-search">
-        <label
-          >SKU, barcode, name, parent product ID or variant ID<input
+      </div>
+      <div
+        id="picker-tabs"
+        class="picker-tabs"
+        role="group"
+        aria-label="How to choose components"
+      >
+        <button type="button" data-mode="product" aria-pressed="true">
+          Product · all colours</button
+        ><button type="button" data-mode="prefix" aria-pressed="false">
+          SKU family</button
+        ><button type="button" data-mode="exact_sku" aria-pressed="false">
+          Specific item
+        </button>
+      </div>
+      <p id="picker-help" class="hint"></p>
+      <form id="picker-search" class="search-form">
+        <label class="grow"
+          ><span id="search-label">Product name or SKU</span
+          ><input
             id="picker-query"
             required
             maxlength="100"
-            autocomplete="off" /></label
+            autocomplete="off"
+            placeholder="Search by product name or SKU" /></label
         ><button type="submit">Search</button>
       </form>
-      <p id="picker-status" role="status"></p>
+      <p id="picker-status" role="status" aria-live="polite"></p>
       <div id="picker-results"></div>
+      <button id="more-results" type="button" hidden>Load more products</button>
+      <div class="dialog-footer">
+        <span id="selection-count">Nothing selected</span>
+        <div class="actions">
+          <button id="cancel-picker" type="button">Cancel</button
+          ><button id="confirm-picker" type="button" class="primary" disabled>
+            Select
+          </button>
+        </div>
+      </div>
+    </dialog>
+    <dialog id="discard-dialog" aria-labelledby="discard-title">
+      <h2 id="discard-title">Discard unsaved changes?</h2>
+      <p>Your previously saved bundle will stay as it is.</p>
+      <div class="actions">
+        <button id="keep-editing" type="button">Keep editing</button
+        ><button id="confirm-discard" type="button" class="danger">
+          Discard changes
+        </button>
+      </div>
     </dialog>
   </body>
 </html>

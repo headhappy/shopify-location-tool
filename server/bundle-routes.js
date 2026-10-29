@@ -1,7 +1,7 @@
 import express from "express";
 import { BundleError, requireValue } from "./bundle-errors.js";
 import { createBundleAuth } from "./bundle-auth.js";
-import { variantSummary } from "./bundle-service.js";
+import { variantSummary, normalizeComponentRule } from "./bundle-service.js";
 import { previewCursor } from "./bundle-store.js";
 import { createDealService } from "./deal-service.js";
 
@@ -119,12 +119,24 @@ export function createBundleRouter({
     }),
   );
   const deals = createDealService({ catalog, store });
-  router.get("/deals/:id", run(async (req, res) => {
-    res.json(await deals.definition(req.params.id, req.query.locationId, Number(req.query.recipeVersion)));
-  }));
-  router.post("/deals/:id/test", run(async (req, res) => {
-    res.json(await deals.test(req.params.id, req.body));
-  }));
+  router.get(
+    "/deals/:id",
+    run(async (req, res) => {
+      res.json(
+        await deals.definition(
+          req.params.id,
+          req.query.locationId,
+          Number(req.query.recipeVersion),
+        ),
+      );
+    }),
+  );
+  router.post(
+    "/deals/:id/test",
+    run(async (req, res) => {
+      res.json(await deals.test(req.params.id, req.body));
+    }),
+  );
   router.post(
     "/logout",
     run(async (req, res) => {
@@ -150,6 +162,44 @@ export function createBundleRouter({
         ),
       }),
     ),
+  );
+  router.get(
+    "/products",
+    run(async (req, res) => {
+      res.json(await catalog.products(req.query.q, req.query.after));
+    }),
+  );
+  router.post(
+    "/component-choices",
+    run(async (req, res) => {
+      const rule = normalizeComponentRule(req.body.rule);
+      res.json({
+        rule,
+        variants: (await catalog.rule(rule)).map(variantSummary),
+      });
+    }),
+  );
+  router.get(
+    "/definitions/:id",
+    run(async (req, res) => {
+      const recipe = await store.recipe(req.params.id);
+      const finished = (await catalog.nodes(recipe.finishedVariantIds)).map(
+        variantSummary,
+      );
+      const components = [];
+      for (const component of recipe.components) {
+        try {
+          components.push({
+            ...component,
+            choices: (await catalog.rule(component.rule)).map(variantSummary),
+          });
+        } catch (error) {
+          if (!(error instanceof BundleError)) throw error;
+          components.push({ ...component, choices: [], issue: error.message });
+        }
+      }
+      res.json({ recipe, finished, components });
+    }),
   );
   router.post(
     "/variants/resolve",

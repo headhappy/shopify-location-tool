@@ -7,6 +7,47 @@ import { registerBundleModule } from "../server/bundle-module.js";
 import { hashPassword, parseStaff, hashToken } from "../server/bundle-auth.js";
 import { setup, savedCrown, previewInput, manager } from "./bundle-fixtures.js";
 
+test("simple editor product search and family lookup stay authenticated and return complete saved definitions", async (t) => {
+  const c = await apiFixture(t),
+    recipe = await savedCrown(c);
+  assert.equal(
+    (await c.request("/products?q=Crown", { anonymous: true })).response.status,
+    401,
+  );
+  await c.login();
+  const search = await c.request("/products?q=Crown");
+  assert.equal(search.response.status, 200);
+  assert.equal(search.data.products[0].variantCount, 4);
+  const family = await c.request("/component-choices", {
+    method: "POST",
+    body: { rule: { type: "prefix", value: "RB_RC_M" } },
+  });
+  assert.equal(family.response.status, 200);
+  assert.equal(family.data.variants.length, 4);
+  const forged = await c.request("/component-choices", {
+    method: "POST",
+    body: { rule: { type: "prefix", value: "RB_RC_M" } },
+    headers: { "X-CSRF-Token": "wrong" },
+  });
+  assert.equal(forged.response.status, 403);
+  const invalid = await c.request("/component-choices", {
+    method: "POST",
+    body: { rule: { type: "prefix", value: "RB OR sku:*" } },
+  });
+  assert.equal(invalid.response.status, 400);
+  await c.login("sam");
+  const reopened = await c.request(`/definitions/${recipe.id}`);
+  assert.equal(reopened.response.status, 200);
+  assert.equal(reopened.data.components[1].choices.length, 6);
+  assert.equal(reopened.data.components[0].bindingMode, "by_finished");
+  assert.equal((await c.store.listRecipes()).length, 1);
+  assert.equal((await c.store.listPreviews()).length, 0);
+  assert.equal(
+    c.calls.some(({ query }) => /\bmutation\b/.test(query)),
+    false,
+  );
+});
+
 export async function apiFixture(t) {
   const context = await setup(t),
     password = "Only a test password!";
@@ -281,19 +322,53 @@ test("authenticated full CSV export is marked preview-only and missing configura
 });
 
 test("deal simulator inherits staff sessions and CSRF; it cannot submit sales or change inventory", async (t) => {
-  const c = await apiFixture(t), recipe = await savedCrown(c);
+  const c = await apiFixture(t),
+    recipe = await savedCrown(c);
   const path = `/deals/${recipe.id}/test`;
-  const body = { recipeVersion: recipe.version, locationId: "gid://shopify/Location/1", lines: [], scan: "RB_RC_M3" };
-  assert.equal((await c.request(path, { method: "POST", body })).response.status, 401);
+  const body = {
+    recipeVersion: recipe.version,
+    locationId: "gid://shopify/Location/1",
+    lines: [],
+    scan: "RB_RC_M3",
+  };
+  assert.equal(
+    (await c.request(path, { method: "POST", body })).response.status,
+    401,
+  );
   await c.login("sam");
-  assert.equal((await c.request(path, { method: "POST", body, headers: { "X-CSRF-Token": "wrong" } })).response.status, 403);
-  assert.equal((await c.request(path, { method: "POST", body, headers: { Origin: "https://evil.example" } })).response.status, 403);
+  assert.equal(
+    (
+      await c.request(path, {
+        method: "POST",
+        body,
+        headers: { "X-CSRF-Token": "wrong" },
+      })
+    ).response.status,
+    403,
+  );
+  assert.equal(
+    (
+      await c.request(path, {
+        method: "POST",
+        body,
+        headers: { Origin: "https://evil.example" },
+      })
+    ).response.status,
+    403,
+  );
   const result = await c.request(path, { method: "POST", body });
   assert.equal(result.response.status, 200);
   assert.equal(result.data.lines.length, 1);
   assert.equal(result.data.inventoryWritesEnabled, false);
   assert.equal(result.data.appliedAdjustments, 0);
-  assert.equal((await c.request(`/deals/${recipe.id}/sell`, { method: "POST", body })).response.status, 404);
-  assert.equal((await c.request("/assemblies", { method: "POST", body })).response.status, 403);
+  assert.equal(
+    (await c.request(`/deals/${recipe.id}/sell`, { method: "POST", body }))
+      .response.status,
+    404,
+  );
+  assert.equal(
+    (await c.request("/assemblies", { method: "POST", body })).response.status,
+    403,
+  );
   assert.deepEqual(await c.store.listPreviews(), []);
 });

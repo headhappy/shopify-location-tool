@@ -1,0 +1,33 @@
+name: POS deal pilot checks
+on:
+  pull_request:
+    paths: ['apps/head-happy-pos-deals/**', '.github/workflows/pos-deals.yml']
+  push:
+    branches: [main, codex/pos-deals-pilot]
+    paths: ['apps/head-happy-pos-deals/**', '.github/workflows/pos-deals.yml']
+permissions:
+  contents: read
+jobs:
+  pos-deals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: apps/head-happy-pos-deals
+    env:
+      SHOPIFY_CLI_NO_ANALYTICS: '1'
+      OPT_OUT_INSTRUMENTATION: 'true'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Install pinned package manager
+        run: npm install --global pnpm@11.25.0
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: pnpm typecheck
+      # Shopify CLI 5 config validation/build may require an authenticated account.
+      # Keep PR checks credential-free; run the CLI checks locally before release.
+      - run: pnpm build:check

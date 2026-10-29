@@ -11,7 +11,9 @@ export function cameraFeatures(capabilities = {}, supported = {}) {
   return {
     torch: capabilities.torch === true || (Array.isArray(capabilities.torch) && capabilities.torch.includes(true)),
     zoom,
-    focus: modes.includes('single-shot') ? 'single-shot' : modes.includes('continuous') ? 'continuous' : null,
+    // Keep tracking as staff move between the barcode and the phone. Choosing
+    // single-shot first can leave focus fixed after the first tap.
+    focus: modes.includes('continuous') ? 'continuous' : modes.includes('single-shot') ? 'single-shot' : null,
     continuousFocus: modes.includes('continuous'),
     points: supported.pointsOfInterest === true,
   };
@@ -30,16 +32,18 @@ export function focusPoint(x, y, rect, mirrored = false) {
 export class CameraSettings {
   constructor(track) { this.track = track; this.active = true; this.accepted = {}; this.pending = Promise.resolve(); }
   close() { this.active = false; }
-  apply(patch) {
+  apply(patch, { remove = [] } = {}) {
     const operation = this.pending.then(async () => {
       if (!this.active || this.track.readyState === 'ended') return false;
       // Keep capture/device constraints and previously accepted controls. Avoid
       // mutually contradictory advanced sets when a slider is moved again.
       const current = this.track.getConstraints?.() || {};
       const changes = { ...this.accepted, ...patch }, base = { ...current };
-      for (const key of Object.keys(changes)) delete base[key];
+      for (const key of remove) delete changes[key];
+      const replaced = [...Object.keys(changes), ...remove];
+      for (const key of replaced) delete base[key];
       const advanced = (current.advanced || []).map((set) => {
-        const kept = { ...set }; for (const key of Object.keys(changes)) delete kept[key]; return kept;
+        const kept = { ...set }; for (const key of replaced) delete kept[key]; return kept;
       }).filter((set) => Object.keys(set).length);
       await this.track.applyConstraints({ ...base, advanced: [...advanced, changes] });
       if (!this.active || this.track.readyState === 'ended') return false;
@@ -118,11 +122,32 @@ export function attachCameraControls({ box, video, track, onClose, onCamera, act
       } finally { if (live()) slider.disabled = false; }
     });
   }
-  let focusing = false, markerTimer;
+  let focusing = false, markerTimer, focusButton, lastPoint = { x: 0.5, y: 0.5 };
   const marker = node('span', '', 'camera-focus-marker'); marker.hidden = true; marker.setAttribute('aria-hidden', 'true'); box.append(marker);
-  async function refocus(point = { x: 0.5, y: 0.5 }) {
-    if (focusing || !live()) return;
+  const canTapFocus = () => !!features.focus && features.points;
+  const canRefocus = () => canTapFocus() || features.focus === 'single-shot';
+  const updateHint = () => {
+    hint.textContent = 'Keep the whole barcode inside the frame. If it is blurry, move a little further away.';
+    if (canTapFocus()) hint.textContent += ' Tap the barcode to choose a focus area. Refocus retries that spot (or the centre before a tap). The yellow square marks your request, not confirmed sharpness.';
+    else if (features.focus === 'single-shot') hint.textContent += ' Use Refocus for a fresh focus attempt. This camera cannot focus at a tapped point.';
+    else hint.textContent += ' Focus is controlled by your phone; tap-to-focus is not available on this camera/browser.';
+    const unavailable = [!features.torch && 'light', !features.zoom && 'zoom'].filter(Boolean);
+    if (unavailable.length) hint.textContent += ` This camera/browser does not offer ${unavailable.join(', ')} controls.`;
+    if (focusButton) focusButton.hidden = !canRefocus();
+  };
+  async function refocus(point = lastPoint) {
+    if (focusing || !live() || !canRefocus()) return;
     focusing = true;
+    if (focusButton) focusButton.disabled = true;
+    if (canTapFocus()) {
+      lastPoint = point;
+      const rect = video.getBoundingClientRect(), boxRect = box.getBoundingClientRect();
+      const mirrored = getComputedStyle(video).transform.startsWith('matrix(-1');
+      marker.style.left = `${rect.left - boxRect.left + rect.width * (mirrored ? 1 - point.x : point.x)}px`;
+      marker.style.top = `${rect.top - boxRect.top + rect.height * point.y}px`;
+      marker.hidden = false; clearTimeout(markerTimer); markerTimer = setTimeout(() => { marker.hidden = true; }, 900);
+    }
+    say('Requesting focus… Hold the barcode steady.');
     try {
       const patch = { focusMode: features.focus };
       if (features.points) patch.pointsOfInterest = [point];
@@ -132,29 +157,41 @@ export function attachCameraControls({ box, video, track, onClose, onCamera, act
         if (!features.points) throw error;
         // Some browsers advertise points but the selected lens refuses them.
         features.points = false;
-        applied = await settings.apply({ focusMode: features.focus });
+        marker.hidden = true;
+        updateHint();
+        // Remove an earlier successful point too, so it cannot poison fallback
+        // or later light/zoom requests if the lens stops accepting points.
+        applied = await settings.apply({ focusMode: features.focus }, { remove: ['pointsOfInterest'] });
       }
-      if (applied) say(features.points ? 'Focus requested at the tapped point. Hold the barcode steady.' : 'Autofocus requested. Keep the barcode near the centre.');
-    } catch { say('This camera could not refocus on request. Move slightly further away and hold steady.'); }
-    finally { focusing = false; }
+      if (applied) {
+        const actual = read(track, 'getSettings');
+        if (features.points) {
+          const confirmed = actual.pointsOfInterest?.some(p => Math.abs(p.x - point.x) < 0.02 && Math.abs(p.y - point.y) < 0.02);
+          if (!confirmed) {
+            marker.hidden = true;
+            say('Focus requested, but this camera has not confirmed the point. Move a little further away or try another camera.');
+          } else say(actual.focusMode === 'continuous'
+            ? 'Focus area requested. Automatic focus keeps adjusting as you move.'
+            : 'Focus area requested. Hold steady; tap again if you move.');
+        } else say(features.continuousFocus
+          ? 'Tap-to-focus is unavailable on this camera. Automatic focus remains in control.'
+          : 'Autofocus requested. Keep the barcode near the centre.');
+      }
+    } catch { marker.hidden = true; say('This camera could not refocus on request. Move slightly further away and hold steady.'); }
+    finally { focusing = false; if (live() && focusButton) focusButton.disabled = false; }
   }
-  if (features.focus) {
-    button('Refocus', () => { void refocus(); });
+  if (canRefocus()) {
+    focusButton = button('Refocus', () => { void refocus(); });
     listen(box, 'click', (event) => {
-      if (tools.contains(event.target)) return;
+      if (tools.contains(event.target) || focusing || !canTapFocus() || !live()) return;
       const rect = video.getBoundingClientRect();
       if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) return;
-      const boxRect = box.getBoundingClientRect();
-      marker.style.left = `${event.clientX - boxRect.left}px`; marker.style.top = `${event.clientY - boxRect.top}px`;
-      marker.hidden = false; clearTimeout(markerTimer); markerTimer = setTimeout(() => { marker.hidden = true; }, 900);
       const mirrored = getComputedStyle(video).transform.startsWith('matrix(-1');
       void refocus(focusPoint(event.clientX, event.clientY, rect, mirrored));
     });
   }
   if (onClose) button('Close camera', onClose);
-  const unavailable = [!features.torch && 'light', !features.zoom && 'zoom', !features.focus && 'tap focus'].filter(Boolean);
-  hint.textContent += features.focus ? ' Tap the picture to request focus.' : ' Focus is controlled by your phone.';
-  if (unavailable.length) hint.textContent += ` This camera/browser does not offer ${unavailable.join(', ')} controls.`;
+  updateHint();
   // Autofocus is best-effort and does not block camera startup or teardown.
   if (features.continuousFocus) void settings.apply({ focusMode: 'continuous' }).catch(() => {});
   // enumerateDevices uses the existing permission; do not call getUserMedia a

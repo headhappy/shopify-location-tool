@@ -1,11 +1,18 @@
-# Location scanner controls (1.4.2)
+# Location scanner controls (1.4.3)
 
 The Product Locations, Batch Scan and Scan Location pages share this helper.
 Light and zoom appear only when the running camera advertises those capabilities.
-Refocus requests single-shot focus, or continuous autofocus if that is the only
-available mode. Taps use normalized points of interest when the browser supports
-them; if that request fails, the control retries autofocus without a point.
-The UI says focus was requested, never that the barcode is now in focus.
+Focus prefers continuous autofocus so moving the phone after tapping does not
+leave the lens in single-shot mode. Taps use normalized points of interest only
+when the browser advertises that control. If points are rejected, the control
+removes any previously accepted point and falls back to ordinary autofocus.
+Automatic-only cameras show an explanation instead of an ineffective Refocus
+button. Single-shot-only cameras retain Refocus; tapping is offered only with
+point support. The UI checks reported points after a request and explains when
+the camera has not confirmed them (including delayed/missing settings). It never
+claims the barcode is sharp: a yellow square marks a request, not focus success.
+Refocus retries the last tapped point, or the centre before any tap, and shows the
+same request marker as tapping. The chosen point resets when the camera closes.
 
 Zoom changes the video track used by both the preview and barcode decoder. It is
 not a CSS enlargement of the preview. The slider uses the device's range/step.

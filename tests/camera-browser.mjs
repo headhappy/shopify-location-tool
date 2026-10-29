@@ -56,7 +56,7 @@ async function open(viewport={width:390,height:844},pagePath='/__camera.html',pr
     window.__streams=[];window.__codes=[];window.__controlCalls=[];
     if(profile){
       const supported=navigator.mediaDevices.getSupportedConstraints.bind(navigator.mediaDevices);
-      navigator.mediaDevices.getSupportedConstraints=()=>({...supported(),pointsOfInterest:true});
+      navigator.mediaDevices.getSupportedConstraints=()=>({...supported(),pointsOfInterest:profile.points!==false});
       if(profile.cameras)navigator.mediaDevices.enumerateDevices=async()=>[
         {kind:'videoinput',deviceId:'rear-wide',label:'Rear wide camera'},
         {kind:'videoinput',deviceId:'rear-close',label:'Rear close camera'},
@@ -80,6 +80,7 @@ async function open(viewport={width:390,height:844},pagePath='/__camera.html',pr
           const patch=Object.assign({},...(next.advanced||[]));window.__controlCalls.push(patch);
           if(window.__controlDelay)await new Promise(r=>setTimeout(r,window.__controlDelay));
           if(window.__rejectFeature&&window.__rejectFeature in patch)throw new DOMException('Unsupported control','OverconstrainedError');
+          if(profile.ignorePoints)delete patch.pointsOfInterest;
           lastConstraints=next;changes={...changes,...patch};
         };
       }
@@ -149,11 +150,19 @@ try {
     await page.locator('video').scrollIntoViewIfNeeded();
     const bounds=await page.locator('video').boundingBox();
     await page.mouse.click(bounds.x+bounds.width*0.25,bounds.y+bounds.height*0.65);
-    await page.waitForFunction(()=>__controlCalls.some(c=>c.focusMode==='single-shot'&&c.pointsOfInterest));
+    await page.waitForFunction(()=>__controlCalls.some(c=>c.focusMode==='continuous'&&c.pointsOfInterest));
     const focus=await page.evaluate(()=>__controlCalls.findLast(c=>c.pointsOfInterest));
     assert.ok(Math.abs(focus.pointsOfInterest[0].x-0.25)<0.02);
     assert.ok(Math.abs(focus.pointsOfInterest[0].y-0.65)<0.02);
     assert.equal(focus.torch,true);assert.equal(focus.zoom,1.5);
+    assert.equal(await page.evaluate(()=>__controlCalls.some(c=>c.focusMode==='single-shot')),false,'Tapping must not lock an autofocus camera to a one-time attempt');
+    const beforeRefocus=await page.evaluate(()=>__controlCalls.length);
+    await page.getByRole('button',{name:'Refocus',exact:true}).click();
+    await page.waitForFunction(before=>__controlCalls.length>before,beforeRefocus);
+    const retried=await page.evaluate(()=>__controlCalls.at(-1));
+    assert.deepEqual(retried.pointsOfInterest,focus.pointsOfInterest,'Refocus must retry the tapped area, not jump back to the centre');
+    assert.equal(retried.focusMode,'continuous');
+    assert.equal(await page.locator('.camera-focus-marker').isVisible(),true,'Button requests need the same visible feedback as taps');
     await ready(page,'#reader');
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Controls fit viewport');
     await page.screenshot({path:`test-results/scanner-controls-${viewport.width}.png`,fullPage:true});
@@ -178,10 +187,55 @@ try {
     await ready(page,'#reader');
     await page.evaluate(()=>{__rejectFeature='pointsOfInterest';});
     await page.getByRole('button',{name:'Refocus',exact:true}).click();
-    await page.waitForFunction(()=>document.querySelector('.camera-message').textContent.includes('Autofocus requested'));
-    assert.equal(await page.evaluate(()=>__controlCalls.at(-1).focusMode),'single-shot');
+    await page.waitForFunction(()=>document.querySelector('.camera-message').textContent.includes('Tap-to-focus is unavailable'));
+    assert.equal(await page.evaluate(()=>__controlCalls.at(-1).focusMode),'continuous');
+    assert.equal(await page.getByRole('button',{name:'Refocus',exact:true}).isVisible(),false);
     await ready(page,'#reader');assert.deepEqual(errors,[]);
     pass('rejected light/point focus settings preserve scanning and fall back to autofocus');await context.close();
+  }
+  {
+    const {context,page,errors}=await open(undefined,'/__camera.html',{...fullControls,points:false});await init(page);
+    assert.equal(await page.getByRole('button',{name:'Refocus',exact:true}).count(),0);
+    assert.match(await page.locator('.camera-tools').textContent(),/tap-to-focus is not available/);
+    const before=await page.evaluate(()=>__controlCalls.length);
+    await page.locator('video').click({force:true});
+    assert.equal(await page.evaluate(()=>__controlCalls.length),before);
+    assert.equal(await page.locator('.camera-focus-marker').isVisible(),false);
+    await ready(page,'#reader');assert.deepEqual(errors,[]);
+    pass('automatic-only focus shows no ineffective Refocus button or tapped-point marker');await context.close();
+  }
+  {
+    const {context,page,errors}=await open(undefined,'/__camera.html',{capabilities:{focusMode:['single-shot']},points:false});await init(page);
+    await page.locator('video').click({force:true});
+    assert.equal(await page.locator('.camera-focus-marker').isVisible(),false);
+    assert.equal(await page.evaluate(()=>__controlCalls.length),0);
+    await page.getByRole('button',{name:'Refocus',exact:true}).click();
+    await page.waitForFunction(()=>__controlCalls.some(c=>c.focusMode==='single-shot'));
+    assert.match(await page.locator('.camera-tools').textContent(),/cannot focus at a tapped point/);
+    await ready(page,'#reader');assert.deepEqual(errors,[]);
+    pass('single-shot-only lenses retain Refocus without pretending to target taps');await context.close();
+  }
+  {
+    const {context,page,errors}=await open(undefined,'/__camera.html',{...fullControls,ignorePoints:true});await init(page);
+    await page.getByRole('button',{name:'Refocus',exact:true}).click();
+    await page.waitForFunction(()=>document.querySelector('.camera-message').textContent.includes('has not confirmed the point'));
+    assert.equal(await page.locator('.camera-focus-marker').isVisible(),false);
+    await ready(page,'#reader');assert.deepEqual(errors,[]);
+    pass('silently ignored focus points are reported as unconfirmed, with scanning retained');await context.close();
+  }
+  {
+    const {context,page,errors}=await open(undefined,'/__camera.html',fullControls);await init(page);
+    await page.getByRole('button',{name:'Refocus',exact:true}).click();
+    await page.waitForFunction(()=>__controlCalls.some(c=>c.pointsOfInterest));
+    assert.deepEqual(await page.evaluate(()=>__controlCalls.at(-1).pointsOfInterest),[{x:0.5,y:0.5}]);
+    await page.evaluate(()=>{__rejectFeature='pointsOfInterest';});
+    await page.getByRole('button',{name:'Refocus',exact:true}).click();
+    await page.waitForFunction(()=>document.querySelector('.camera-message').textContent.includes('Tap-to-focus is unavailable'));
+    await page.getByRole('button',{name:'Light on',exact:true}).click();
+    await page.getByRole('button',{name:'Light off',exact:true}).waitFor();
+    assert.equal(await page.evaluate(()=>'pointsOfInterest' in __controlCalls.at(-1)),false);
+    await ready(page,'#reader');assert.deepEqual(errors,[]);
+    pass('Refocus starts at centre; a later point rejection does not break light controls');await context.close();
   }
   {
     const {context,page,errors}=await open(undefined,'/__camera.html',fullControls);await init(page);

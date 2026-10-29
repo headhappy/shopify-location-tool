@@ -5,7 +5,8 @@ import { cameraFeatures, zoomValue, focusPoint, CameraSettings } from '../public
 test('camera controls are offered only for advertised hardware capabilities', () => {
   assert.deepEqual(cameraFeatures(), {torch:false,zoom:null,focus:null,continuousFocus:false,points:false});
   const supported = cameraFeatures({torch:[false,true],zoom:{min:1,max:4,step:0.25},focusMode:['continuous','single-shot']},{pointsOfInterest:true});
-  assert.equal(supported.torch,true); assert.equal(supported.focus,'single-shot'); assert.equal(supported.continuousFocus,true); assert.equal(supported.points,true);
+  assert.equal(supported.torch,true); assert.equal(supported.focus,'continuous'); assert.equal(supported.continuousFocus,true); assert.equal(supported.points,true);
+  assert.equal(cameraFeatures({focusMode:['single-shot']}).focus,'single-shot');
   assert.equal(cameraFeatures({torch:true}).torch,true);
   assert.equal(cameraFeatures({torch:[false],zoom:{min:1,max:1},focusMode:['manual']}).focus,null);
   assert.equal(cameraFeatures({torch:[false],zoom:{min:1,max:1}}).zoom,null);
@@ -45,4 +46,15 @@ test('stopping while a setting is in flight cancels queued controls and late UI 
   const first=controls.apply({zoom:2}); await Promise.resolve();
   const queued=controls.apply({torch:true});controls.close();track.readyState='ended';finish();
   assert.equal(await first,false);assert.equal(await queued,false);assert.equal(calls,1);
+});
+
+test('point-focus fallback removes earlier points from capture constraints and later controls', async () => {
+  let constraints={deviceId:{exact:'rear'},pointsOfInterest:[{x:0.2,y:0.8}]};
+  const calls=[];
+  const track={readyState:'live',getConstraints:()=>constraints,async applyConstraints(c){constraints=c;calls.push(c);}};
+  const controls=new CameraSettings(track);
+  await controls.apply({torch:true,zoom:2,focusMode:'continuous',pointsOfInterest:[{x:0.3,y:0.7}]});
+  await controls.apply({focusMode:'continuous'},{remove:['pointsOfInterest']});
+  await controls.apply({zoom:3});
+  assert.deepEqual(calls[2],{deviceId:{exact:'rear'},advanced:[{torch:true,zoom:3,focusMode:'continuous'}]});
 });

@@ -47,11 +47,13 @@ CI runs tests, type checking, a read-only scope guard and offline bundling witho
 
 ## Release and access
 
-Remote app created under Head Happy organisation 20198220. Public client ID is in shopify.app.toml; no secret belongs in the repository. Configure **custom distribution for Head Happy only**, not public distribution.
+Remote app created under Head Happy merchant organisation 20198220 and installed on its own Head Happy store only. Public client ID is in shopify.app.toml; no secret belongs in the repository. This own-store app does not need Partner Dashboard distribution. Do not distribute it publicly or install it on another store.
 
 The intended Admin scopes are **read_products,read_inventory** only. The extension uses Shopify's authenticated direct API and native POS session. It does not use the browser builder staff password.
 
 Release/install is a separate approval step. Review the code and scope screen first. Do not publish or install the default template configuration, which originally requested write_products.
+
+With the owner's approval, version **crown-pilot-20261029** was released and installed on Head Happy on 29 October 2026. The active version has exactly read_inventory and read_products. Shopify CLI removed the obsolete include_config_on_deploy setting during release. [Released version](https://dev.shopify.com/dashboard/20198220/apps/441622659073/versions/1187278520321). Native POS sale/refund verification is still outstanding.
 
 ## One real test sale and restock
 

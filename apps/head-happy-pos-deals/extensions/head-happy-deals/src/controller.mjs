@@ -11,16 +11,25 @@ export function waitForCart(api,predicate,timeoutMs=5000) {
 }
 export function createController(api,sessionApi,backend=request) {
   let busy=false;
+  const owner=Date.now().toString(36)+Math.random().toString(36).slice(2);
   const session=()=>sessionApi.currentSession;
   async function clearOwned() {
     if(api.current.value.editable===false) throw new Error('Return to the basket to remove the deal.');
     const m=marker(api.current.value);
     if(!m) return;
+    if(m.pending && m.until>Date.now() && m.owner!==owner) throw new Error('Wait for the current deal change to finish.');
+    // Pause the other mounted target's watcher during native cleanup.
+    m.pending=true;m.until=Date.now()+20000;m.owner=owner;
+    const lease=JSON.stringify(m);
+    await api.addCartProperties({[MARKER]:lease});
+    await waitForCart(api,c=>c.properties?.[MARKER]===lease);
     for(const line of ownedLines(api.current.value)) {
+      if(api.current.value.properties?.[MARKER]!==lease) throw new Error('Another deal change started. Check the basket.');
       if(line.discounts.length!==1) throw new Error('Discounts have been combined. Ask a manager to remove the Head Happy deal in POS.');
       await api.removeLineItemDiscount(line.uuid);
       await waitForCart(api,c=>!c.lineItems.find(l=>l.uuid===line.uuid)?.discounts?.some(d=>d.discountDescription===m.title));
     }
+    if(api.current.value.properties?.[MARKER]!==lease) throw new Error('Another deal change started. Check the basket.');
     await api.removeCartProperties([MARKER]);
     await waitForCart(api,c=>!c.properties?.[MARKER]);
   }
@@ -37,7 +46,7 @@ export function createController(api,sessionApi,backend=request) {
       const quote=await backend(sessionApi,'/quote',quotePayload(deal,start,session()));
       if(quote.fingerprint!==initial.fingerprint || fingerprint(api.current.value,session())!==initial.fingerprint || quote.expiresAt<Date.now())
         throw new Error('The basket changed during the check. Try Apply deal again.');
-      const m={v:2,title:quote.title,hash:quote.fingerprint,saving:quote.saving,until:Date.now()+20000,pending:true};
+      const m={v:2,title:quote.title,hash:quote.fingerprint,saving:quote.saving,until:Date.now()+20000,pending:true,owner};
       await api.addCartProperties({[MARKER]:JSON.stringify(m)});
       await waitForCart(api,c=>c.properties?.[MARKER]===JSON.stringify(m));
       inspectCart(api.current.value,session());

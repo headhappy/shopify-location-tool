@@ -96,3 +96,10 @@ test('backend request requires native session token and never uses cookies',asyn
  try{globalThis.fetch=async(url,options)=>{assert.equal(options.credentials,'omit');assert.equal(options.headers.Authorization,'Bearer test');return {ok:true,json:async()=>({deals:[]})};};
  assert.deepEqual(await request({getSessionToken:async()=>'test'},''),{deals:[]});}finally{globalThis.fetch=original;}
 });
+test('a second mounted controller cannot clear another target\'s in-flight change',async()=>{
+ const n=nativeFixture(),c=createController(n.api,sessionApi,quoteBackend);await c.apply(dealFixture());
+ const m=JSON.parse(n.cart.properties[MARKER]);m.pending=true;m.owner='other-target';m.until=Date.now()+20000;
+ n.cart.properties[MARKER]=JSON.stringify(m);
+ await assert.rejects(createController(n.api,sessionApi,quoteBackend).remove(),/Wait/);
+ assert.equal(n.removeCalls,0);assert.equal(n.cart.grandTotal,'14.99');
+});

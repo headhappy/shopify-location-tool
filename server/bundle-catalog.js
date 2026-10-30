@@ -19,7 +19,7 @@ export const BUNDLE_NODES_QUERY = `query BundleNodes($ids: [ID!]!, $locationId: 
 export const BUNDLE_LOCATIONS_QUERY = `query BundleLocations($after: String) {
   locations(first: 100, after: $after) { nodes { id name isActive } pageInfo { hasNextPage endCursor } }
 }`;
-export const BUNDLE_SHOP_QUERY = `query BundleShop { shop { currencyCode } currentAppInstallation { accessScopes { handle } } }`;
+export const BUNDLE_SHOP_QUERY = `query BundleShop { shop { currencyCode taxesIncluded } currentAppInstallation { accessScopes { handle } } }`;
 export const BUNDLE_PRODUCTS_QUERY = `query BundleProducts($query: String!, $after: String) {
   products(first: 30, after: $after, query: $query) {
     nodes { id title status variantsCount { count } variants(first: 1) { nodes { sku } } }
@@ -134,7 +134,7 @@ export function createBundleCatalog(transport) {
           503,
         );
       }
-      return { currency: data.shop.currencyCode };
+      return { currency: data.shop.currencyCode, taxesIncluded: data.shop.taxesIncluded };
     },
     async locations() {
       return (await pages(BUNDLE_LOCATIONS_QUERY, {}, "locations")).filter(

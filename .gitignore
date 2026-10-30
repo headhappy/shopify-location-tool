@@ -2,5 +2,6 @@ node_modules/
 .env
 .env.*
 !.env.bundle.example
+!.env.example
 test-results/
 *.log

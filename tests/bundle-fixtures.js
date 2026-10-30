@@ -72,7 +72,7 @@ export function graphFixture(rows = variantsFixture()) {
       throw new Error("TEST FAILURE: a Shopify mutation was attempted");
     if (query.includes("query BundleShop"))
       return {
-        shop: { currencyCode: "GBP" },
+        shop: { currencyCode: "GBP", taxesIncluded: true },
         currentAppInstallation: {
           accessScopes: [
             { handle: "read_products" },

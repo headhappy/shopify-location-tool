@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 const publicDirectory = fileURLToPath(new URL("../public/", import.meta.url));
 
 // A test deployment of the existing module, with no legacy write routes mounted.
-export function createBundlePreviewApp({ router, ready, commit = null }) {
+export function createBundlePreviewApp({ router, posRouter, posEnabled = false, ready, commit = null }) {
   const app = express();
   app.disable("x-powered-by");
   app.use((_req, res, next) => {
@@ -16,6 +16,12 @@ export function createBundlePreviewApp({ router, ready, commit = null }) {
     next();
   });
   app.use("/api/bundles", router);
+  if (posRouter) app.use('/api/pos-deals',posRouter);
+  app.get('/pos-app',(_req,res) => {
+    res.removeHeader('X-Frame-Options');
+    res.set('Content-Security-Policy',"default-src 'none'; style-src 'unsafe-inline'; frame-ancestors https://admin.shopify.com https://headhappyhemp.myshopify.com");
+    res.type('html').send(`<!doctype html><html lang="en"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Head Happy deals</title><style>body{font:18px system-ui;max-width:640px;margin:40px auto;padding:20px;line-height:1.6}a{color:#007f5f}</style><h1>Head Happy deals</h1><p>On your till, open the <b>Shopify POS app</b>.</p><ol><li>Add the <b>Head Happy deals</b> tile to the POS home screen (Add tile → App).</li><li>Scan the individual box, grinder and papers.</li><li>Tap <b>Head Happy deals</b>, choose your saved bundle and tap <b>Apply deal</b>.</li><li>Check the total, then take payment as usual.</li></ol><p>Edit your bundles in the <a href="/bundle-builder.html" target="_blank" rel="noopener">Bundle Builder</a>. You do not need to open Shopify Admin on your phone to sell a deal.</p></html>`);
+  });
   app.get("/health", async (_req, res) => {
     try {
       await ready();
@@ -23,6 +29,7 @@ export function createBundlePreviewApp({ router, ready, commit = null }) {
         ok: true,
         app: "Head Happy Bundle Builder test",
         inventoryWritesEnabled: false,
+        posDealsEnabled: posEnabled,
         commit,
       });
     } catch {

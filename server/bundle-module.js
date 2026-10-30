@@ -6,6 +6,7 @@ import { createBundleStore } from "./bundle-store.js";
 import { createBundleRouter } from "./bundle-routes.js";
 import { parseStaff } from "./bundle-auth.js";
 import { requireValue } from "./bundle-errors.js";
+import { createPosDealRouter, createPosVerifier } from './pos-deal-routes.js';
 
 export function registerBundleModule(app, env = process.env) {
   if (env.BUNDLE_BUILDER_ENABLED !== "true") {
@@ -77,5 +78,10 @@ export function createBundleRuntime(env = process.env) {
     origin: origin.origin,
     secure: !local,
   });
-  return { router, pool, store, catalog, service, close: () => pool.end() };
+  const posVerify = createPosVerifier({
+    apiKey:env.POS_SHOPIFY_API_KEY, apiSecretKey:env.POS_SHOPIFY_API_SECRET,
+    shop:env.SHOPIFY_SHOP, origin:origin.origin,
+  });
+  const posRouter = createPosDealRouter({store,catalog,verify:posVerify});
+  return { router, posRouter, posEnabled:Boolean(posVerify), pool, store, catalog, service, close: () => pool.end() };
 }

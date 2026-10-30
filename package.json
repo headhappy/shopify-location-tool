@@ -12,6 +12,7 @@
     "start:bundle-preview": "node server-bundle-preview.js"
   },
   "dependencies": {
+    "@shopify/shopify-api": "15.0.1",
     "body-parser": "^1.20.2",
     "bwip-js": "4.11.4",
     "dotenv": "^16.4.5",

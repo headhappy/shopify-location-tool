@@ -12,6 +12,8 @@ try {
   await runtime.store.ready();
   const app = createBundlePreviewApp({
     router: runtime.router,
+    posRouter: runtime.posRouter,
+    posEnabled: runtime.posEnabled,
     ready: () => runtime.store.ready(),
     commit: process.env.RENDER_GIT_COMMIT || null,
   });

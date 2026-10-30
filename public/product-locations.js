@@ -1,5 +1,5 @@
 import { LOCATION_FIELDS as fields, clean, escapeHtml as esc, lookupRows, jsonRequest, parseDisplay, displayValue } from './location-fields.js';
-import { Camera } from './camera.js?v=1.4.3';
+import { Camera } from './camera.js';
 const $=id=>document.getElementById(id),camera=new Camera();
 let variants=[],selected=null,lookupGeneration=0,controller=null,saving=false;
 const current=()=>selected===null?null:variants[selected];

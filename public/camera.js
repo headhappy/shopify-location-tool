@@ -1,7 +1,6 @@
 // Keep the scan container measurable BEFORE Html5Qrcode creates its video.
 // The library clears the container and reads clientWidth while it is empty.
-import { attachCameraControls } from './camera-controls.js?v=1.4.3';
-export const CAMERA_VERSION = '1.4.3';
+export const CAMERA_VERSION = '1.4.1';
 
 export function scanBox(width, height) {
   if (width < 60 || height < 60) throw new Error('Camera preview is too small. Open the scanner in a visible area.');
@@ -26,9 +25,6 @@ export class Camera {
     this.generation = 0;
     this.pending = Promise.resolve();
     this.previousStyle = null;
-    this.controls = null;
-    this.preferredDevice = null;
-    this.pagehide = null;
   }
 
   // Serialise start/stop. Stopping during a permission prompt must wait for
@@ -44,10 +40,6 @@ export class Camera {
     this.reader = null;
     this.box = null;
     this.previousStyle = null;
-    this.controls?.destroy();
-    this.controls = null;
-    if (this.pagehide) window.removeEventListener('pagehide', this.pagehide);
-    this.pagehide = null;
     const videos = box ? [...box.querySelectorAll('video')] : [];
     const tracks = videos.flatMap(video => video.srcObject?.getTracks?.() || []);
     if (reader) {
@@ -63,7 +55,6 @@ export class Camera {
       box.style.width = previous?.width || '';
       box.removeAttribute('aria-busy');
       delete box.dataset.cameraState;
-      box.classList.remove('camera-open');
     }
   }
 
@@ -72,7 +63,7 @@ export class Camera {
     return this.enqueue(() => this.release());
   }
 
-  start(box, onCode, { continuous = false, deviceId = this.preferredDevice } = {}) {
+  start(box, onCode, { continuous = false } = {}) {
     const generation = ++this.generation;
     return this.enqueue(async () => {
       await this.release();
@@ -86,23 +77,14 @@ export class Camera {
       box.style.width = '100%';
       box.dataset.cameraState = 'starting';
       box.dataset.cameraVersion = CAMERA_VERSION;
-      box.classList.add('camera-open');
       box.setAttribute('aria-busy', 'true');
       let decoding = false;
       try {
         if (box.clientWidth < 60) throw new Error('The camera area is hidden or too narrow. Open this page normally and try again.');
-        // Keep the library's 100%-height shaded overlay inside a video-only
-        // container. Otherwise adding controls extends that overlay over them.
-        const capture = document.createElement('div');
-        capture.id = `${box.id}-capture`;
-        capture.style.display = 'block';
-        capture.style.width = '100%';
-        capture.style.position = 'relative';
-        box.replaceChildren(capture);
-        const reader = new globalThis.Html5Qrcode(capture.id);
+        const reader = new globalThis.Html5Qrcode(box.id);
         this.reader = reader;
         await reader.start(
-          deviceId ? { deviceId: { exact: deviceId } } : { facingMode: 'environment' },
+          { facingMode: 'environment' },
           { fps: 8, qrbox: scanBox },
           text => {
             if (generation !== this.generation || decoding || !String(text ?? '').trim()) return;
@@ -131,33 +113,6 @@ export class Camera {
         }
         box.dataset.cameraState = 'scanning';
         box.setAttribute('aria-busy', 'false');
-        const track = video.srcObject?.getVideoTracks?.()[0];
-        // Optional controls are isolated from startup: a device with no control
-        // API must still get the same working video and decoder as before.
-        if (track) {
-          try {
-            this.controls = attachCameraControls({ box, video, track,
-              active: () => generation === this.generation,
-              onClose: continuous ? null : () => { void this.stop(); },
-              onCamera: (id) => {
-                this.preferredDevice = id;
-                void this.start(box, onCode, { continuous, deviceId: id }).catch((error) => {
-                  this.preferredDevice = null;
-                  const notice = document.createElement('p');
-                  notice.className = 'status error'; notice.setAttribute('role', 'alert');
-                  notice.textContent = `${error.message} Tap Scan again to use the default camera.`;
-                  box.append(notice);
-                });
-              },
-            });
-          } catch { /* Optional hardware controls must never close capture. */ }
-        }
-        this.pagehide = () => {
-          // pagehide cannot wait on promises; release hardware immediately.
-          video.srcObject?.getTracks?.().forEach((item) => item.stop());
-          void this.stop();
-        };
-        window.addEventListener('pagehide', this.pagehide, { once: true });
       } catch (error) {
         await this.release();
         if (generation === this.generation) throw cameraError(error);

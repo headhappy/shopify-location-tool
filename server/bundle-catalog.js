@@ -1,0 +1,249 @@
+import { gid, requireValue, shortText } from "./bundle-errors.js";
+
+// All operations in this module are reads. The existing client/credentials are reused.
+const fields = `id title sku barcode price requiresComponents
+  product { id title status }
+  inventoryItem { id tracked unitCost { amount currencyCode }
+    inventoryLevel(locationId: $locationId) @include(if: $withStock) {
+      id quantities(names: ["available"]) { name quantity }
+    }
+  }`;
+export const BUNDLE_VARIANTS_QUERY = `query BundleVariants($query: String!, $after: String, $locationId: ID!, $withStock: Boolean!) {
+  productVariants(first: 100, after: $after, query: $query) {
+    nodes { ${fields} } pageInfo { hasNextPage endCursor }
+  }
+}`;
+export const BUNDLE_NODES_QUERY = `query BundleNodes($ids: [ID!]!, $locationId: ID!, $withStock: Boolean!) {
+  nodes(ids: $ids) { ... on ProductVariant { ${fields} } }
+}`;
+export const BUNDLE_LOCATIONS_QUERY = `query BundleLocations($after: String) {
+  locations(first: 100, after: $after) { nodes { id name isActive } pageInfo { hasNextPage endCursor } }
+}`;
+export const BUNDLE_SHOP_QUERY = `query BundleShop { shop { currencyCode taxesIncluded } currentAppInstallation { accessScopes { handle } } }`;
+export const BUNDLE_PRODUCTS_QUERY = `query BundleProducts($query: String!, $after: String) {
+  products(first: 30, after: $after, query: $query) {
+    nodes { id title status variantsCount { count } variants(first: 1) { nodes { sku } } }
+    pageInfo { hasNextPage endCursor }
+  }
+}`;
+const quote = (value) => `"${value.replace(/[\\"]/g, "\\$&")}"`;
+const stockArgs = (locationId) => ({
+  locationId: locationId || "gid://shopify/Location/1",
+  withStock: Boolean(locationId),
+});
+
+export function readOnlyBundleGraph(transport) {
+  const allowed = new Set([
+    BUNDLE_VARIANTS_QUERY,
+    BUNDLE_NODES_QUERY,
+    BUNDLE_LOCATIONS_QUERY,
+    BUNDLE_SHOP_QUERY,
+    BUNDLE_PRODUCTS_QUERY,
+  ]);
+  return (query, variables) => {
+    requireValue(
+      allowed.has(query),
+      "This builder only permits its reviewed Shopify read operations.",
+      403,
+    );
+    return transport(query, variables);
+  };
+}
+
+export function createBundleCatalog(transport) {
+  const graph = readOnlyBundleGraph(transport);
+  async function pages(query, variables, key, max = 5000) {
+    const result = [],
+      cursors = new Set();
+    let after = null;
+    do {
+      const data = await graph(query, { ...variables, after });
+      const connection = data[key];
+      requireValue(
+        Array.isArray(connection?.nodes) && connection.pageInfo,
+        "Shopify returned an incomplete catalogue.",
+        502,
+      );
+      result.push(...connection.nodes);
+      requireValue(
+        result.length <= max,
+        "This rule is too broad. Narrow it before continuing.",
+        422,
+      );
+      if (!connection.pageInfo.hasNextPage) return result;
+      after = connection.pageInfo.endCursor;
+      requireValue(
+        after && !cursors.has(after),
+        "Shopify catalogue pagination did not advance.",
+        502,
+      );
+      cursors.add(after);
+    } while (true);
+  }
+  async function search(query, locationId) {
+    if (locationId) gid(locationId, "Location");
+    return pages(
+      BUNDLE_VARIANTS_QUERY,
+      { query, ...stockArgs(locationId) },
+      "productVariants",
+    );
+  }
+  return {
+    async products(text, after = null) {
+      text = shortText(text, "Product search", 100);
+      requireValue(
+        !after || (typeof after === "string" && after.length <= 1000),
+        "Invalid search page.",
+      );
+      // Literal search terms: do not interpret user input as Shopify query syntax.
+      const words = text
+        .split(/\s+/)
+        .map((word) => `title:${quote(word)}*`)
+        .join(" AND ");
+      const query = `status:active,draft,unlisted AND ((${words}) OR sku:${quote(text)}* OR barcode:${quote(text)})`;
+      const data = await graph(BUNDLE_PRODUCTS_QUERY, { query, after });
+      requireValue(
+        Array.isArray(data.products?.nodes) && data.products.pageInfo,
+        "Product search is unavailable.",
+        502,
+      );
+      return {
+        products: data.products.nodes
+          .filter((p) => p.status !== "ARCHIVED")
+          .map((p) => ({
+            id: p.id,
+            title: p.title,
+            status: p.status,
+            variantCount: p.variantsCount?.count ?? null,
+            sku: p.variants.nodes[0]?.sku || "",
+          })),
+        nextCursor: data.products.pageInfo.hasNextPage
+          ? data.products.pageInfo.endCursor
+          : null,
+      };
+    },
+    async metadata() {
+      const data = await graph(BUNDLE_SHOP_QUERY);
+      const scopes = new Set(
+        data.currentAppInstallation?.accessScopes?.map((s) => s.handle),
+      );
+      for (const scope of ["products", "inventory", "locations"]) {
+        requireValue(
+          scopes.has(`read_${scope}`) || scopes.has(`write_${scope}`),
+          `Shopify permission read_${scope} is required.`,
+          503,
+        );
+      }
+      return { currency: data.shop.currencyCode, taxesIncluded: data.shop.taxesIncluded };
+    },
+    async locations() {
+      return (await pages(BUNDLE_LOCATIONS_QUERY, {}, "locations")).filter(
+        (l) => l.isActive,
+      );
+    },
+    async nodes(ids, locationId) {
+      ids.forEach((id) => gid(id, "ProductVariant"));
+      if (locationId) gid(locationId, "Location");
+      const result = [];
+      for (let i = 0; i < ids.length; i += 100) {
+        const data = await graph(BUNDLE_NODES_QUERY, {
+          ids: ids.slice(i, i + 100),
+          ...stockArgs(locationId),
+        });
+        requireValue(
+          Array.isArray(data.nodes),
+          "Shopify returned no variant data.",
+          502,
+        );
+        result.push(...data.nodes.filter(Boolean));
+      }
+      return result;
+    },
+    async lookup(text, locationId) {
+      text = shortText(text, "Search", 100);
+      if (/^gid:\/\/shopify\/ProductVariant\/[1-9][0-9]*$/.test(text))
+        return this.nodes([text], locationId);
+      if (/^(gid:\/\/shopify\/Product\/)?[1-9][0-9]*$/.test(text)) {
+        // Numeric scans can also be barcodes; search both without silently choosing.
+        const rows = await search(
+          `product_id:${text.split("/").at(-1)} OR barcode:${quote(text)}`,
+          locationId,
+        );
+        return rows.filter(
+          (v) =>
+            v.product.id ===
+              `gid://shopify/Product/${text.split("/").at(-1)}` ||
+            v.barcode === text,
+        );
+      }
+      return search(
+        `sku:${quote(text)} OR barcode:${quote(text)} OR title:${quote(text)}`,
+        locationId,
+      );
+    },
+    async scan(value, locationId) {
+      value = shortText(value, "Barcode or exact SKU", 100);
+      const matches = (
+        await search(
+          `sku:${quote(value)} OR barcode:${quote(value)}`,
+          locationId,
+        )
+      ).filter((v) => v.sku === value || v.barcode === value);
+      requireValue(
+        matches.length === 1,
+        matches.length
+          ? "This barcode or SKU matches more than one item. Ask a manager to correct it."
+          : "Barcode or exact SKU not found.",
+        422,
+      );
+      return matches[0];
+    },
+    async exactSku(sku, locationId) {
+      sku = shortText(sku, "SKU", 100);
+      const rows = (await search(`sku:${quote(sku)}`, locationId)).filter(
+        (v) => v.sku === sku,
+      );
+      requireValue(
+        rows.length === 1,
+        rows.length
+          ? `SKU ${sku} is duplicated in Shopify; use a restricted variant group instead.`
+          : `SKU ${sku} was not found.`,
+        422,
+      );
+      return rows[0];
+    },
+    async rule(rule, locationId) {
+      let rows;
+      if (rule.type === "exact_sku") {
+        const variant = await this.exactSku(rule.value, locationId);
+        requireValue(
+          !rule.variantId || variant.id === rule.variantId,
+          `SKU ${rule.value} now points to a different variant. Review the recipe.`,
+          409,
+        );
+        rows = [variant];
+      } else if (rule.type === "product") {
+        rows = (
+          await search(`product_id:${rule.value.split("/").at(-1)}`, locationId)
+        ).filter((v) => v.product.id === rule.value);
+      } else if (rule.type === "prefix") {
+        // Prefix is deliberately a safe literal plus an optional final *, never arbitrary regex/search syntax.
+        rows = (await search(`sku:${rule.value}*`, locationId)).filter((v) =>
+          v.sku?.startsWith(rule.value),
+        );
+      } else {
+        rows = await this.nodes(rule.variantIds, locationId);
+        requireValue(
+          rows.length === rule.variantIds.length,
+          "A restricted variant was deleted or is inaccessible. Review the recipe.",
+          422,
+        );
+      }
+      return rows.filter(
+        (v) =>
+          v.product.status !== "ARCHIVED" &&
+          !rule.excludeVariantIds.includes(v.id),
+      );
+    },
+  };
+}

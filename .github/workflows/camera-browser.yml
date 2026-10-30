@@ -1,16 +1,10 @@
 name: Real scanner browser regression
 on:
-  pull_request:
-    paths:
-      - 'public/**'
-      - 'tests/camera*'
-      - '.github/workflows/camera-browser.yml'
   push:
     branches: [main, fix/scanner-preview]
     paths:
       - 'public/**'
       - 'tests/camera-browser.mjs'
-      - 'tests/camera-controls.test.js'
       - '.github/workflows/camera-browser.yml'
   workflow_dispatch:
 permissions:

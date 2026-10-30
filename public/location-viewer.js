@@ -1,5 +1,5 @@
 import {LOCATION_FIELDS as fields,clean,escapeHtml as esc,locationKey,physicalLocation,parseDisplay,jsonRequest} from './location-fields.js';
-import {Camera} from './camera.js?v=1.4.3';
+import {Camera} from './camera.js';
 const $=id=>document.getElementById(id),camera=new Camera();let rows=[],searchTerm='',generation=0,controller=null,saving=false;
 function status(message,tone=''){ $('status').textContent=message;$('status').className=`status ${tone}`; }
 const values=row=>fields.map(f=>physicalLocation(row[f.current])).filter(Boolean);

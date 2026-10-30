@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'self'"
+    />
+    <title>Bundle Builder · Head Happy</title>
+    <link rel="stylesheet" href="/bundle-builder.css" />
+    <script type="module" src="/bundle-builder.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/index.html">HEAD HAPPY</a>
+      <nav aria-label="Application">
+        <a href="/index.html">Locations</a
+        ><a href="/label-station.html">Labels</a
+        ><a href="/bundle-builder.html" aria-current="page">Bundle Builder</a>
+      </nav>
+      <div id="account" hidden>
+        <span id="staff-name"></span
+        ><button id="logout" type="button">Sign out</button>
+      </div>
+    </header>
+    <main>
+      <div class="page-heading">
+        <div>
+          <p class="eyebrow">YOUR PRODUCTS. YOUR COMBINATIONS.</p>
+          <h1>Bundle Builder</h1>
+          <p>Choose a bundle product. Add what goes inside. Save.</p>
+        </div>
+        <span class="badge">SETUP COPY</span>
+      </div>
+      <p id="status" role="status" aria-live="polite"></p>
+      <section id="login-panel" class="card login" hidden>
+        <h2>Staff sign in</h2>
+        <p>Use your existing Bundle Builder login.</p>
+        <form id="login-form">
+          <label
+            >Staff ID<input
+              name="username"
+              autocomplete="username"
+              required
+              maxlength="60" /></label
+          ><label
+            >Password<input
+              name="password"
+              type="password"
+              autocomplete="current-password"
+              required
+              maxlength="256" /></label
+          ><button type="submit" class="primary">Sign in</button>
+        </form>
+      </section>
+      <div id="workspace" hidden>
+        <section id="bundle-list-panel">
+          <div class="section-heading">
+            <h2>Your bundles</h2>
+            <button id="new-bundle" type="button" class="primary">
+              Create bundle
+            </button>
+          </div>
+          <div id="bundle-list"></div>
+        </section>
+        <form id="bundle-editor" class="card" hidden>
+          <div class="section-heading">
+            <h2 id="editor-title">Set up new bundle</h2>
+            <button id="back" type="button" class="quiet">
+              Back to bundles
+            </button>
+          </div>
+          <section class="editor-section">
+            <h3>Bundle</h3>
+            <p class="hint">
+              Select the product you already created in Shopify.
+            </p>
+            <div id="bundle-product" class="product-summary"></div>
+            <button id="select-bundle" type="button">Select bundle</button>
+          </section>
+          <section class="editor-section">
+            <h3>Components</h3>
+            <p class="hint">
+              Add each product once. All its colours qualify unless you choose a
+              specific item.
+            </p>
+            <div id="components"></div>
+            <button id="add-components" type="button" disabled>
+              Add components
+            </button>
+          </section>
+          <div class="save-bar">
+            <p>Saved here. Automatic Shopify stock updates are not enabled.</p>
+            <div class="actions">
+              <button id="discard" type="button">Discard</button
+              ><button id="save-bundle" type="submit" class="primary" disabled>
+                Save bundle
+              </button>
+            </div>
+          </div>
+        </form>
+        <details class="help">
+          <summary>How do colours and stock work?</summary>
+          <p>
+            <strong>One row is one component choice.</strong> If a row says
+            quantity 1 and allows red, blue and green grinders, the deal
+            contains one of those grinders—not all three.
+          </p>
+          <p>
+            Choose <strong>Product · all colours</strong> for normal Shopify
+            variants. Choose <strong>SKU family</strong> when colours are
+            separate products, for example <code>BOX_1_</code> includes
+            <code>BOX_1_RED</code> and <code>BOX_1_BLUE</code>. New matching
+            items qualify automatically. Choose
+            <strong>Specific item</strong> for a fixed SKU or a differently
+            priced option.
+          </p>
+          <p>
+            At the till, tap <strong>Build a deal</strong> in Shopify POS.
+            Choose or scan the colours, check the complete set, then add it at
+            the deal price. Items already scanned are reused. The till app uses
+            this saved bundle and its existing Shopify product's price.
+            Shopify deducts the actual components when checkout is completed.
+            Saving here does not change stock or update Bundles.app.
+          </p>
+        </details>
+        <details class="help">
+          <summary>Earlier tools and saved tests</summary>
+          <p>
+            <a href="/assembly-history.html"
+              >Open earlier assembly previews and history</a
+            >
+            · <a href="/deal-tester.html">Open deal basket checks</a>
+          </p>
+          <p>
+            The browser basket checks are optional practice. Real sales happen
+            in Shopify POS using the Build a deal tile. Check the total before
+            payment. If you change the basket, reopen the guide to review it.
+          </p>
+        </details>
+      </div>
+    </main>
+    <dialog id="picker" aria-labelledby="picker-title">
+      <div class="dialog-heading">
+        <h2 id="picker-title">Select bundle</h2>
+        <button
+          id="close-picker"
+          class="quiet"
+          type="button"
+          aria-label="Close product picker"
+        >
+          Close
+        </button>
+      </div>
+      <div
+        id="picker-tabs"
+        class="picker-tabs"
+        role="group"
+        aria-label="How to choose components"
+      >
+        <button type="button" data-mode="product" aria-pressed="true">
+          Product · all colours</button
+        ><button type="button" data-mode="prefix" aria-pressed="false">
+          SKU family</button
+        ><button type="button" data-mode="exact_sku" aria-pressed="false">
+          Specific item
+        </button>
+      </div>
+      <p id="picker-help" class="hint"></p>
+      <form id="picker-search" class="search-form">
+        <label class="grow"
+          ><span id="search-label">Product name or SKU</span
+          ><input
+            id="picker-query"
+            required
+            maxlength="100"
+            autocomplete="off"
+            placeholder="Search by product name or SKU" /></label
+        ><button type="submit">Search</button>
+      </form>
+      <p id="picker-status" role="status" aria-live="polite"></p>
+      <div id="picker-results"></div>
+      <button id="more-results" type="button" hidden>Load more products</button>
+      <div class="dialog-footer">
+        <span id="selection-count">Nothing selected</span>
+        <div class="actions">
+          <button id="cancel-picker" type="button">Cancel</button
+          ><button id="confirm-picker" type="button" class="primary" disabled>
+            Select
+          </button>
+        </div>
+      </div>
+    </dialog>
+    <dialog id="discard-dialog" aria-labelledby="discard-title">
+      <h2 id="discard-title">Discard unsaved changes?</h2>
+      <p>Your previously saved bundle will stay as it is.</p>
+      <div class="actions">
+        <button id="keep-editing" type="button">Keep editing</button
+        ><button id="confirm-discard" type="button" class="danger">
+          Discard changes
+        </button>
+      </div>
+    </dialog>
+  </body>
+</html>

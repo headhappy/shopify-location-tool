@@ -1,1 +1,28 @@
-{"name":"head-happy-stock-control-locations","version":"1.4.0","description":"Head Happy variant-only locations, dual displays and label station.","type":"module","scripts":{"start":"node server-main.js","test":"node --test tests/*.test.js"},"dependencies":{"body-parser":"^1.20.2","bwip-js":"4.11.4","dotenv":"^16.4.5","express":"^4.19.2","node-fetch":"^3.3.2"},"license":"MIT"}
+{
+  "name": "head-happy-stock-control-locations",
+  "version": "1.4.0",
+  "description": "Head Happy variant-only locations, dual displays and label station.",
+  "type": "module",
+  "scripts": {
+    "start": "node server-main.js",
+    "test": "node --test tests/*.test.js",
+    "bundle:migrate": "node scripts/bundle-migrate.js",
+    "bundle:password": "node scripts/bundle-password.js",
+    "test:bundles:browser": "node tests/bundle-browser.mjs && node tests/bundle-editor-browser.mjs",
+    "start:bundle-preview": "node server-bundle-preview.js"
+  },
+  "dependencies": {
+    "@shopify/shopify-api": "15.0.1",
+    "body-parser": "^1.20.2",
+    "bwip-js": "4.11.4",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "node-fetch": "^3.3.2",
+    "pg": "^8.23.1"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "pg-mem": "^3.0.14",
+    "playwright": "1.62.1"
+  }
+}

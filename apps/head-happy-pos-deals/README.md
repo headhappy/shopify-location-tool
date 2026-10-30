@@ -8,6 +8,8 @@ The app reads the existing Bundle Builder recipes and takes the deal price from 
 
 In the **Shopify POS app**, use **Add tile → App → Head Happy POS Deals / Head Happy deals**. Staff need access to the installed app and permission to apply discounts. The app uses the Shopify POS session; the browser builder password is not needed on the till.
 
+If the app is missing from that list, first verify that the active Shopify app version includes `[pos] embedded = true`. The top-level `embedded = true` only enables Shopify admin embedding; it does not make the app available in POS. Release the corrected app configuration, then verify **Head Happy POS Deals** appears under the Point of Sale channel's app settings before asking staff to add the tile. This is separate from Discounty.
+
 1. Scan the actual box, grinder and both papers.
 2. Tap **Head Happy deals**, then **Apply deal** under the saved Crown bundle.
 3. For one Crown kit at its current price, confirm **£14.99** before payment.

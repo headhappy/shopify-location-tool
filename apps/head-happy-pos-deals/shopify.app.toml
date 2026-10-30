@@ -5,6 +5,9 @@ name = "Head Happy POS Deals"
 application_url = "https://headhappy-bundle-preview.onrender.com/pos-app"
 embedded = true
 
+[pos]
+embedded = true
+
 [build]
 automatically_update_urls_on_dev = false
 

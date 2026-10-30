@@ -5,6 +5,38 @@ import {createController,watchDeal} from '../extensions/head-happy-deals/src/con
 import {quotePayload,request} from '../extensions/head-happy-deals/src/backend.mjs';
 import {session,sessionApi,dealFixture,cartFixture,nativeFixture} from './fixtures.mjs';
 const quoteBackend=async(_s,_p,body)=>({...quoteCart(dealFixture(),body.cart,body.session),expiresAt:Date.now()+30000});
+
+test('older POS carts use the active session currency and preserve the quote fingerprint',async()=>{
+ for(const absent of [undefined,null]) {
+  const cart=cartFixture();cart.currency=absent;
+  const payload=quotePayload(dealFixture(),cart,session);
+  assert.equal(payload.cart.currency,'GBP');
+  assert.equal(fingerprint(cart,session),fingerprint(payload.cart,session));
+  assert.equal(quoteCart(dealFixture(),cart,session).total,1499);
+  const native=nativeFixture(cart),controller=createController(native.api,sessionApi,quoteBackend);
+  await controller.apply(dealFixture());assert.ok(appliedValid(native.cart,session));
+  assert.equal(native.cart.grandTotal,'14.99');
+  native.cart.currency='GBP';assert.ok(appliedValid(native.cart,session));
+  await controller.remove();assert.equal(native.cart.grandTotal,'23.43');
+ }
+});
+
+test('currency fallback never hides a different, invalid or unknown currency',async()=>{
+ for(const [sessionCurrency,cartCurrency,reason] of [
+  ['USD',undefined,/reports USD/],['GBP','EUR',/different currencies/],
+  ['GBP','',/different currencies/],['GBP',{},/different currencies/],
+  [undefined,'GBP',/did not provide/],[undefined,undefined,/did not provide/],['gbp',undefined,/did not provide/],
+ ]) {
+  const current={...session,currency:sessionCurrency},cart={...cartFixture(),currency:cartCurrency};
+  assert.throws(()=>inspectCart(cart,current),reason);
+  assert.equal(appliedValid(cart,current),false);
+  const native=nativeFixture(cart);
+  await assert.rejects(createController(native.api,{currentSession:current},quoteBackend).apply(dealFixture()),reason);
+  assert.equal(native.bulkCalls,0);
+ }
+ const native=nativeFixture();await createController(native.api,sessionApi,quoteBackend).apply(dealFixture());
+ native.cart.currency='EUR';assert.equal(appliedValid(native.cart,session),false);
+});
 test('every box and grinder colour matches the saved groups and yields £14.99',()=>{
  const deal=dealFixture();
  for(const box of deal.groups[0].items)for(const grinder of deal.groups[1].items){

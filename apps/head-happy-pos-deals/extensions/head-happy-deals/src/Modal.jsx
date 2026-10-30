@@ -90,7 +90,7 @@ export function Extension() {
     {message && <s-banner heading={message} tone={failed ? 'critical' : 'info'}><s-text>{message}</s-text></s-banner>}
     {busy && <s-text>Keep this screen open. Nothing is sold until you complete checkout.</s-text>}
     {!busy && (success || hasDeal) ? <s-section heading={applied ? 'Deal price applied' : 'Check the current deal'}>
-      <s-text>Basket total: {cart.grandTotal} {cart.currency}. Actual components are in the basket.</s-text>
+      <s-text>Basket total: {cart.grandTotal} {cart.currency ?? session.currency}. Actual components are in the basket.</s-text>
       {!applied && <s-text>The basket changed. Remove the deal discount, then review the choices again before payment.</s-text>}
       <s-button variant="primary" onClick={()=>window.close()}>Return to basket</s-button>
       <s-button onClick={remove}>Remove deal discount to change choices</s-button>
@@ -123,6 +123,6 @@ export function Extension() {
       </s-section>}
     </>}
     {!busy && !success && !hasDeal && <s-button onClick={load}>Reload bundles</s-button>}
-    <s-text>{cart.lineItems.reduce((n,l)=>n+l.quantity,0)} items in basket · Guided release · POS {session.posVersion || 'version unavailable'}</s-text>
+    <s-text>{cart.lineItems.reduce((n,l)=>n+l.quantity,0)} items in basket · Guided GBP fix · POS {session.posVersion || 'version unavailable'}</s-text>
   </s-stack></s-scroll-box></s-page>;
 }

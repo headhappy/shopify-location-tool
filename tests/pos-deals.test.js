@@ -60,6 +60,16 @@ test('missing POS config fails closed while leaving other modules available',asy
   const c=await endpoint(t,null);assert.equal((await fetch(c.url,{headers:c.auth})).status,503);
 });
 
+test('POS quote supports an omitted basket currency but rejects unknown or conflicting session currency',async t=>{
+  const c=await endpoint(t);delete c.body.cart.currency;
+  const post=()=>fetch(c.url+'/quote',{method:'POST',headers:c.auth,body:JSON.stringify(c.body)});
+  let res=await post();assert.equal(res.status,200);assert.equal((await res.json()).total,1499);
+  c.body.cart.currency='EUR';res=await post();assert.equal(res.status,422);assert.match((await res.json()).error,/different currencies/);
+  delete c.body.cart.currency;c.body.session.currency='USD';res=await post();assert.equal(res.status,422);assert.match((await res.json()).error,/reports USD/);
+  delete c.body.session.currency;res=await post();assert.equal(res.status,422);assert.match((await res.json()).error,/did not provide/);
+  assert.deepEqual(await c.store.listPreviews(),[]);assert.ok(c.calls.every(call=>!call.query.includes('mutation')));
+});
+
 test('guided definitions expose eligible labels, barcode and stock without component costs',async t=>{
   const c=await endpoint(t),body={id:c.recipe.id,version:c.recipe.version,session:c.body.session};
   assert.equal((await fetch(c.url+'/definition',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).status,401);

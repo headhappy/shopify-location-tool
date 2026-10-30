@@ -23,7 +23,7 @@ export async function request(session, path, body) {
 export function quotePayload(deal, cart, session) {
   return {id:deal.id, version:deal.version,
     session:{shopDomain:session.shopDomain,locationId:session.locationId,currency:session.currency},
-    cart:{currency:cart.currency, editable:cart.editable, grandTotal:cart.grandTotal,
+    cart:{currency:cart.currency ?? session.currency, editable:cart.editable, grandTotal:cart.grandTotal,
       customer:cart.customer ? {id:cart.customer.id} : undefined,
       cartDiscount:cart.cartDiscount,cartDiscounts:cart.cartDiscounts,
       properties:cart.properties,

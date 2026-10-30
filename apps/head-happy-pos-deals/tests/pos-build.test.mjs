@@ -42,6 +42,12 @@ test('already-scanned components are reused without duplicates',async()=>{
   const n=native();await createBuildController(n.api,sessionApi,backend).build(deal,choices,fingerprint(n.cart,session));
   assert.equal(n.added,0);assert.equal(n.cart.grandTotal,'14.99');assert.equal(n.cart.lineItems.length,4);
 });
+
+test('guided build works with a GBP session when the native basket omits currency',async()=>{
+  const c={...cartFixture(),lineItems:[],grandTotal:'0.00'};delete c.currency;
+  const n=native(c);await createBuildController(n.api,sessionApi,backend).build(deal,choices,fingerprint(n.cart,session));
+  assert.equal(n.added,4);assert.equal(n.cart.grandTotal,'14.99');assert.ok(appliedValid(n.cart,session));
+});
 test('partial basket adds only the missing papers and preserves unrelated items',async()=>{
   const c=cartFixture();c.lineItems=c.lineItems.slice(0,2);c.lineItems.push({uuid:'extra',variantId:55,productId:66,sku:'EXTRA',price:5,quantity:1,discounts:[]});
   const n=native(c);n.emit();await createBuildController(n.api,sessionApi,backend).build(deal,choices,fingerprint(n.cart,session));

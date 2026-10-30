@@ -11,6 +11,17 @@ export function cents(value) {
 }
 export const money = (value) => `£${(value / 100).toFixed(2)}`;
 function need(ok, message) { if (!ok) throw new Error(message); }
+// Older POS cart contracts omit currency. Session.currency is the documented
+// active-location currency; a present cart currency must still agree with it.
+export function basketCurrency(cart, session) {
+  need(typeof session.currency === 'string' && /^[A-Z]{3}$/.test(session.currency),
+    'Shopify POS did not provide the store currency. Close and reopen the deal; if this continues, tell the manager the POS version below.');
+  need(session.currency === 'GBP', `This deal is priced in GBP, but Shopify POS reports ${session.currency}. Check the active store before payment.`);
+  const currency = cart.currency ?? session.currency;
+  need(currency === session.currency,
+    `Shopify POS reports different currencies for the store (${session.currency}) and basket (${typeof currency === 'string' && /^[A-Z]{3}$/.test(currency) ? currency : 'unrecognised'}). Reopen the basket before applying the deal.`);
+  return currency;
+}
 export function cartDiscounts(cart) {
   const list = [...(cart.cartDiscounts || [])];
   if (cart.cartDiscount && !list.some((d) => JSON.stringify(d) === JSON.stringify(cart.cartDiscount))) list.push(cart.cartDiscount);
@@ -24,7 +35,7 @@ export function marker(cart) {
   } catch { return null; }
 }
 export function fingerprint(cart, session) {
-  const text = JSON.stringify([session.shopDomain, session.locationId, session.currency, cart.currency, cart.customer?.id ?? null,
+  const text = JSON.stringify([session.shopDomain, session.locationId, session.currency, cart.currency ?? session.currency, cart.customer?.id ?? null,
     (cart.lineItems || []).map(l => [l.uuid, l.variantId, l.productId, l.sku, l.quantity, l.price, l.taxable,
       l.sellingPlan?.id ?? null, l.requiresSellingPlan, l.isGiftCard, l.components, l.properties]).sort((a,b) => String(a[0]).localeCompare(String(b[0])))]);
   // Non-security checksum for stale-basket detection; authentication uses Shopify JWTs.
@@ -37,6 +48,7 @@ export function ownedLines(cart) {
   return m ? (cart.lineItems || []).filter(l => (l.discounts || []).some(d => d.discountDescription === m.title)) : [];
 }
 export function appliedValid(cart, session) {
+  try { basketCurrency(cart,session); } catch { return false; }
   const m = marker(cart);
   if (!m || m.hash !== fingerprint(cart, session) || cartDiscounts(cart).length) return false;
   let saving = 0, regular = 0;
@@ -53,7 +65,7 @@ export function appliedValid(cart, session) {
 }
 export function inspectCart(cart, session, allowEmpty = false) {
   need(session.shopDomain === SHOP && Number.isSafeInteger(session.locationId) && session.locationId > 0, 'Open this app in Head Happy Shopify POS.');
-  need(session.currency === 'GBP' && cart.currency === 'GBP', 'This deal needs a GBP basket.');
+  basketCurrency(cart,session);
   need(cart.editable !== false, 'Return to the basket before applying the deal.');
   need(!cartDiscounts(cart).length, 'Another basket discount is present. Review it in POS before applying a deal.');
   need(!cart.properties?._headhappy_pos_deal_v1, 'Remove the old Crown pilot discount and its basket before using the updated deal.');

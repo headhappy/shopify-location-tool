@@ -14,6 +14,7 @@ import mount from './apps/head-happy-pos-deals/extensions/head-happy-deals/src/M
 const mode=new URLSearchParams(location.search).get('mode');
 const deal=dealFixture();deal.groups.forEach(g=>g.items.forEach(v=>{v.barcode=v.sku;v.title=v.sku;v.productTitle=g.name;}));
 const initial=cartFixture();if(mode!=='reuse'){initial.lineItems=[];initial.grandTotal='0.00';}
+if(mode==='legacy-currency')delete initial.currency;
 if(mode==='readonly')initial.editable=false;
 const native=nativeFixture(initial);let added=0,scan;
 native.api.addLineItem=async(id,quantity,options)=>{const v=deal.groups.flatMap(g=>g.items).find(v=>v.id.endsWith('/'+id));
@@ -44,7 +45,7 @@ const browser=await chromium.launch({headless:true,...(process.env.BUNDLE_BROWSE
 try {
   const page=await browser.newPage({viewport:{width:390,height:844}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
   const origin='http://127.0.0.1:'+server.address().port;
-  for(const mode of ['empty','reuse','failure','readonly']) {
+  for(const mode of ['empty','reuse','legacy-currency','failure','readonly']) {
     await page.goto(origin+'/?mode='+mode);
     await page.locator('s-section[heading="Choose Box"]').waitFor();
     await page.locator('s-button').filter({hasText:mode==='reuse' ? 'BOX_RED' : 'BOX_GREEN'}).click();

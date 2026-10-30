@@ -1,4 +1,5 @@
 // Shared by the POS extension and server. These checks never write inventory.
+import {selectedItems} from './pos-build.js';
 export const MARKER = '_headhappy_deal_v2';
 export const SHOP = 'headhappyhemp.myshopify.com';
 export function cents(value) {
@@ -50,14 +51,14 @@ export function appliedValid(cart, session) {
   }
   return saving === m.saving && cents(cart.grandTotal) === regular - saving;
 }
-export function inspectCart(cart, session) {
+export function inspectCart(cart, session, allowEmpty = false) {
   need(session.shopDomain === SHOP && Number.isSafeInteger(session.locationId) && session.locationId > 0, 'Open this app in Head Happy Shopify POS.');
   need(session.currency === 'GBP' && cart.currency === 'GBP', 'This deal needs a GBP basket.');
   need(cart.editable !== false, 'Return to the basket before applying the deal.');
   need(!cartDiscounts(cart).length, 'Another basket discount is present. Review it in POS before applying a deal.');
   need(!cart.properties?._headhappy_pos_deal_v1, 'Remove the old Crown pilot discount and its basket before using the updated deal.');
   const lines = cart.lineItems;
-  need(Array.isArray(lines) && lines.length > 0 && lines.length <= 100, 'Scan the components first (up to 100 different items).');
+  need(Array.isArray(lines) && (allowEmpty || lines.length > 0) && lines.length <= 100, 'Scan the components first (up to 100 different items).');
   need(new Set(lines.map(l => l.uuid)).size === lines.length, 'The basket has duplicate line identifiers. Refresh it first.');
   let subtotal = 0, count = 0;
   for (const l of lines) {
@@ -104,7 +105,7 @@ export function allocateDiscount(lines, saving) {
   throw new Error('These extra quantities prevent an exact penny split. Put the complete deals in their own basket.');
 }
 
-export function quoteCart(deal, cart, session) {
+export function quoteCart(deal, cart, session, selections, requestedSets = 1) {
   const inspection = inspectCart(cart, session);
   const members = new Map();
   for (const group of deal.groups) for (const item of group.items) {
@@ -123,14 +124,21 @@ export function quoteCart(deal, cart, session) {
     counts.set(group.id, counts.get(group.id) + line.quantity);
     eligible.push({...line, price:cents(line.price), groupId:group.id, available:item.available});
   }
-  const sets = Math.min(...deal.groups.map(g => Math.floor(counts.get(g.id) / g.quantity)));
+  const chosen = selections === undefined ? null : selectedItems(deal,selections,requestedSets);
+  if (chosen) for (const item of chosen) need(eligible.filter(l => `gid://shopify/ProductVariant/${l.variantId}` === item.id).reduce((n,l)=>n+l.quantity,0) >= item.quantity,
+    `${item.sku}: the chosen quantity is missing from the basket.`);
+  const sets = chosen ? requestedSets : Math.min(...deal.groups.map(g => Math.floor(counts.get(g.id) / g.quantity)));
   const missing = deal.groups.filter(g => counts.get(g.id) < g.quantity).map(g => `${g.quantity - counts.get(g.id)} × ${g.name}`);
   need(sets > 0, 'Still to scan: ' + missing.join(', '));
   const remaining = new Map(deal.groups.map(g => [g.id, sets * g.quantity]));
+  const chosenRemaining = new Map((chosen || []).map(v => [v.id,v.quantity]));
   let matchedTotal = 0;
   const demand = new Map();
   for (const l of eligible) {
-    l.used = Math.min(l.quantity, remaining.get(l.groupId)); remaining.set(l.groupId, remaining.get(l.groupId) - l.used);
+    const id = `gid://shopify/ProductVariant/${l.variantId}`;
+    l.used = Math.min(l.quantity, chosen ? (chosenRemaining.get(id) || 0) : remaining.get(l.groupId));
+    remaining.set(l.groupId, remaining.get(l.groupId) - l.used);
+    if (chosen) chosenRemaining.set(id,(chosenRemaining.get(id) || 0)-l.used);
     matchedTotal += l.price * l.used;
     demand.set(l.variantId, (demand.get(l.variantId) || 0) + l.quantity);
   }

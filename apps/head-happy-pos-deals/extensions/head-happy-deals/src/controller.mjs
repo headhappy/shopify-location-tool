@@ -9,7 +9,7 @@ export function waitForCart(api,predicate,timeoutMs=5000) {
     off=api.current.subscribe(check);check(api.current.value);
   });
 }
-export function createController(api,sessionApi,backend=request) {
+export function createController(api,sessionApi,backend=request,progress=(_message)=>{}) {
   let busy=false;
   const owner=Date.now().toString(36)+Math.random().toString(36).slice(2);
   const session=()=>sessionApi.currentSession;
@@ -37,21 +37,24 @@ export function createController(api,sessionApi,backend=request) {
     if(busy) throw new Error('Wait for the current deal check to finish.');
     busy=true;try {await clearOwned();return 'Deal removed. Your scanned items are still in the basket.';} finally {busy=false;}
   }
-  async function apply(deal) {
+  async function apply(deal,selections,sets=1) {
     if(busy) throw new Error('Wait for the current deal check to finish.');
     busy=true;let attempted=false;
     try {
       await clearOwned();
+      progress('Checking the basket and current deal price…');
       const start=api.current.value, initial=inspectCart(start,session());
-      const quote=await backend(sessionApi,'/quote',quotePayload(deal,start,session()));
+      const quote=await backend(sessionApi,'/quote',{...quotePayload(deal,start,session()),...(selections ? {selections,sets} : {})});
       if(quote.fingerprint!==initial.fingerprint || fingerprint(api.current.value,session())!==initial.fingerprint || quote.expiresAt<Date.now())
-        throw new Error('The basket changed during the check. Try Apply deal again.');
+        throw new Error('The basket changed during the check. Review the choices and try again.');
       const m={v:2,title:quote.title,hash:quote.fingerprint,saving:quote.saving,until:Date.now()+20000,pending:true,owner};
+      progress('Waiting for the till to accept the deal…');
       await api.addCartProperties({[MARKER]:JSON.stringify(m)});
       await waitForCart(api,c=>c.properties?.[MARKER]===JSON.stringify(m));
       inspectCart(api.current.value,session());
-      if(fingerprint(api.current.value,session())!==quote.fingerprint || quote.expiresAt<Date.now()) throw new Error('The basket changed. Try Apply deal again.');
+      if(fingerprint(api.current.value,session())!==quote.fingerprint || quote.expiresAt<Date.now()) throw new Error('The basket changed. Review the choices and try again.');
       attempted=true;
+      progress('Applying the deal price…');
       await api.bulkSetLineItemDiscounts(quote.discounts.map(d=>({lineItemUuid:d.uuid,
         lineItemDiscount:{type:'FixedAmount',title:quote.title,amount:(d.amount/100).toFixed(2)}})));
       await waitForCart(api,c=>quote.discounts.every(d=>{
@@ -59,6 +62,7 @@ export function createController(api,sessionApi,backend=request) {
         return line?.discounts?.length===1 && line.discounts[0].discountDescription===quote.title &&
           line.discounts[0].type==='FixedAmount' && cents(line.discounts[0].amount)===d.amount;
       }) && appliedValid(c,session()) && cents(c.grandTotal)===quote.total);
+      progress('Confirming the basket total…');
       m.pending=false;delete m.until;
       await api.addCartProperties({[MARKER]:JSON.stringify(m)});
       await waitForCart(api,c=>c.properties?.[MARKER]===JSON.stringify(m));
@@ -83,7 +87,7 @@ export function watchDeal(api,sessionApi,notify,controller=createController(api,
       if(m.pending && m.until>Date.now()) {check();return;}
       if(appliedValid(cart,sessionApi.currentSession)) {reported='';return;}
       removing=true;
-      try {await controller.remove();if(!disposed)notify('Basket changed. Deal removed—tap Head Happy deals and apply again.');}
+      try {await controller.remove();if(!disposed)notify('Basket changed. Deal removed—tap Build a deal to review the choices.');}
       catch(error) {if(!disposed && reported!==error.message){reported=error.message;notify('Check the deal before payment: '+error.message);}}
       finally {removing=false;}
     },600);

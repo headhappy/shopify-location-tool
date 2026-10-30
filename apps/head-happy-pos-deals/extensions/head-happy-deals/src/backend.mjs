@@ -1,6 +1,9 @@
 const ORIGIN = 'https://headhappy-bundle-preview.onrender.com';
 export async function request(session, path, body) {
-  const token = await session.getSessionToken();
+  let tokenTimer;
+  const token = await Promise.race([session.getSessionToken(),new Promise((_,reject) => {
+    tokenTimer=setTimeout(()=>reject(new Error('Shopify sign-in did not respond. Close and reopen the deal.')),15000);
+  })]).finally(()=>clearTimeout(tokenTimer));
   if (!token) throw new Error('Your Shopify POS user needs access to Head Happy POS Deals. Ask the manager to check app permissions.');
   const controller = new AbortController(), timer = setTimeout(() => controller.abort(),55000);
   try {

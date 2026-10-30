@@ -34,6 +34,9 @@ jobs:
       - run: npm test
       - run: npx playwright install --with-deps chromium
       - run: npm run test:bundles:browser
+      - name: Install POS guide test dependencies
+        run: npm install --global pnpm@11.25.0 && pnpm --dir apps/head-happy-pos-deals install --frozen-lockfile
+      - run: node tests/pos-guide-browser.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:

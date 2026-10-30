@@ -53,14 +53,24 @@ export function createPosDealRouter({store, catalog, verify}) {
   router.get('/',wrap(async (_req,res) => {
     res.json({deals:(await store.listRecipes()).map(({id,version,name}) => ({id,version,name}))});
   }));
+  router.post('/definition',wrap(async (req,res) => {
+    const {id,version,session} = req.body || {};
+    requireValue(session?.shopDomain === SHOP && Number.isSafeInteger(session.locationId) && session.locationId > 0,'A Head Happy POS location is required.');
+    const deal = await deals.definition(id,`gid://shopify/Location/${session.locationId}`,version);
+    // POS staff need choice labels and stock, never unit costs or staff history.
+    res.json({...deal,groups:deal.groups.map(group => ({...group,items:group.items.map(v => ({
+      id:v.id,productId:v.productId,sku:v.sku,barcode:v.barcode,title:v.title,productTitle:v.productTitle,
+      price:v.price,available:v.available,tracked:v.tracked,status:v.status,requiresComponents:v.requiresComponents,
+    }))}))});
+  }));
   router.post('/quote',wrap(async (req,res) => {
-    const {id,version,session,cart} = req.body || {};
+    const {id,version,session,cart,selections,sets} = req.body || {};
     requireValue(session?.shopDomain === SHOP && Number.isSafeInteger(session.locationId) && session.locationId > 0,'A Head Happy POS location is required.');
     const metadata = await catalog.metadata();
     requireValue(metadata.taxesIncluded === true,'This deal needs tax-inclusive Shopify prices. Ask a manager to check the store settings.',422);
     const deal = await deals.definition(id,`gid://shopify/Location/${session.locationId}`,version);
     let quote;
-    try { quote = quoteCart(deal,cart,session); }
+    try { quote = quoteCart(deal,cart,session,selections,sets); }
     catch (error) { throw new BundleError(error.message,422); }
     res.json({...quote, expiresAt:Date.now()+30000});
   }));

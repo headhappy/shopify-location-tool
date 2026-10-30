@@ -2,7 +2,7 @@ export const session={shopDomain:'headhappyhemp.myshopify.com',locationId:1,curr
 export const sessionApi={currentSession:session};
 export function dealFixture(){
  const item=(id,product,sku,price)=>({id:`gid://shopify/ProductVariant/${id}`,productId:`gid://shopify/Product/${product}`,sku,price,available:500,tracked:true,status:'ACTIVE',requiresComponents:false});
- return {id:'7256dd94-a27d-4176-8172-5ac0efbd9168',version:3,name:'Crown kit',price:1499,currency:'GBP',groups:[
+ return {id:'7256dd94-a27d-4176-8172-5ac0efbd9168',version:3,name:'Crown kit',product:{id:'gid://shopify/Product/999',title:'Crown kit'},price:1499,currency:'GBP',groups:[
  {id:'box',name:'Box',quantity:1,items:[item(1,11,'BOX_RED','14.99'),item(2,12,'BOX_GREEN','14.99')]},
  {id:'grinder',name:'Grinder',quantity:1,items:[item(3,13,'GRINDER_RED','3.50'),item(4,13,'GRINDER_GREEN','3.50')]},
  {id:'gold',name:'Gold papers',quantity:1,items:[item(5,14,'PAPK_RDY','2.65')]},

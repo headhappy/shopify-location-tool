@@ -59,3 +59,23 @@ test('POS quote uses the persisted recipe version and current family/price data 
 test('missing POS config fails closed while leaving other modules available',async t=>{
   const c=await endpoint(t,null);assert.equal((await fetch(c.url,{headers:c.auth})).status,503);
 });
+
+test('guided definitions expose eligible labels, barcode and stock without component costs',async t=>{
+  const c=await endpoint(t),body={id:c.recipe.id,version:c.recipe.version,session:c.body.session};
+  assert.equal((await fetch(c.url+'/definition',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).status,401);
+  const res=await fetch(c.url+'/definition',{method:'POST',headers:c.auth,body:JSON.stringify(body)});
+  assert.equal(res.status,200);const definition=await res.json();assert.equal(definition.price,1499);
+  assert.ok(definition.groups.length);assert.ok(definition.groups[0].items[0].sku);
+  assert.ok(definition.groups.every(g=>g.items.every(v=>!('cost' in v) && !('inventoryItemId' in v))));
+  body.version++;assert.equal((await fetch(c.url+'/definition',{method:'POST',headers:c.auth,body:JSON.stringify(body)})).status,409);
+  assert.ok(c.calls.every(call=>!call.query.includes('mutation')));
+});
+
+test('guided quote requires a complete selection and does not trust client quantity or price',async t=>{
+  const c=await endpoint(t);
+  const def=await (await fetch(c.url+'/definition',{method:'POST',headers:c.auth,body:JSON.stringify(c.body)})).json();
+  c.body.selections=def.groups.map(g=>({groupId:g.id,variantId:g.items.find(v=>c.body.cart.lineItems.some(l=>v.id.endsWith('/'+l.variantId))).id,quantity:g.quantity}));
+  let res=await fetch(c.url+'/quote',{method:'POST',headers:c.auth,body:JSON.stringify(c.body)});assert.equal(res.status,200);
+  assert.equal((await res.json()).total,1499);
+  c.body.selections.pop();res=await fetch(c.url+'/quote',{method:'POST',headers:c.auth,body:JSON.stringify(c.body)});assert.equal(res.status,422);
+});

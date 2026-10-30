@@ -1,21 +1,23 @@
 # Head Happy POS Deals
 
-Scan the actual components in Shopify POS, open **Head Happy deals**, and press **Apply deal** beneath a saved bundle. Check the total, then complete checkout normally.
+Tap **Build a deal** in Shopify POS, choose or scan the actual colours, check the complete set (including fixed components such as papers), and confirm to add it at the deal price. Return to the basket, check the total, then complete checkout normally.
 
-The app reads the existing Bundle Builder recipes and takes the deal price from their existing Shopify product. It does not add that parent SKU to the basket or create another product. Shopify sells and deducts stock from the actual scanned variants.
+The app reads the existing Bundle Builder recipes and takes the deal price from their existing Shopify product. It does not add that parent SKU to the basket or create another product. Matching items already scanned are reused; only missing quantities are added. Shopify sells and deducts stock from the actual selected variants at checkout.
 
 ## Staff setup
 
-In the **Shopify POS app**, use **Add tile → App → Head Happy POS Deals / Head Happy deals**. Staff need access to the installed app and permission to apply discounts. The app uses the Shopify POS session; the browser builder password is not needed on the till.
+In the **Shopify POS app**, use **Add tile → App → Head Happy POS Deals** and select its **Build a deal** tile (the extension may still be listed as Head Happy deals). Staff need access to the installed app and permission to apply discounts. The app uses the Shopify POS session; the browser builder password is not needed on the till.
 
 If the app is missing from that list, first verify that the active Shopify app version includes `[pos] embedded = true`. The top-level `embedded = true` only enables Shopify admin embedding; it does not make the app available in POS. Release the corrected app configuration, then verify **Head Happy POS Deals** appears under the Point of Sale channel's app settings before asking staff to add the tile. This is separate from Discounty.
 
-1. Scan the actual box, grinder and both papers.
-2. Tap **Head Happy deals**, then **Apply deal** under the saved Crown bundle.
-3. For one Crown kit at its current price, confirm **£14.99** before payment.
-4. If the basket changes, apply again.
+1. Tap **Build a deal**. If several bundles are saved, choose the one to sell.
+2. Choose or scan the box colour, then the grinder colour. Choices already in the basket are preselected. A shared barcode prompts staff to tap the actual colour.
+3. Check the complete set, including both papers, and confirm to add it. Keep the guide open while it adds the items and confirms the price.
+4. Return to the basket. For one Crown kit at its current price, confirm **£14.99** before payment.
 
-Several complete sets of the same saved deal can share one basket. Any eligible colours qualify. Unrelated ordinary products remain full price. A single selected deal is applied per basket; applying another replaces this app's previous deal.
+Use **Number of deals** for several complete sets of the same bundle. Choose the required quantity in each step; colours can differ between kits. Unrelated ordinary products remain full price. Only the selected quantity of deals receives the price, even if more eligible components are in the basket. A single saved deal is applied per basket. To change an applied deal, remove its discount in the guide and review the choices again. Components stay in the basket.
+
+Shopify requires a tap to open this custom guide. Scanning the parent barcode in the normal basket cannot open the questions automatically. Do not scan the parent product as well as its components; the guide refuses that combination to avoid charging twice. The old Apply deal tap's reported lack of response has not been reproduced on a physical till; the replacement has visible progress, errors and confirmation at the top, plus POS toasts.
 
 ## Pricing and safety
 
@@ -23,11 +25,13 @@ The server refreshes the saved version, exact family membership, prices and avai
 
 Native fixed line discounts are per unit. The saving is distributed across qualifying product lines in exact pennies. Repeated units of one variant share their line's saving, including surplus units on that line. Unrelated product lines never receive it. If the exact total cannot be represented by per-unit pennies, staff are asked to use a separate basket for complete deals.
 
-The mounted tile/modal attempts to remove stale discounts. This is a manual workflow, not a checkout Function: cleanup cannot be guaranteed while the extension is unmounted, suspended or the basket is read-only. Staff must check/reapply after edits. The app never clears scanned products or removes an unrelated discount.
+The mounted tile attempts to remove stale discounts; the open guide also flags an applied deal that no longer matches the basket. This is a manual workflow, not a checkout Function: cleanup cannot be guaranteed while the extension is unmounted, suspended or the basket is read-only. Staff must check/review after edits. The app never clears previously scanned products or removes an unrelated discount.
+
+Before adding anything, the guide refreshes the definition and validates the exact selected quantities, stock, price and reviewed basket. New lines carry an operation tag. A failed or cancelled build attempts to remove only its own unchanged new lines. If cleanup cannot be confirmed, the guide explicitly says not to take payment and to review with a manager. Native cart calls are not atomic: closing or suspending the extension during an operation can interrupt it, so keep it open and verify the final basket.
 
 ## Backend
 
-The existing Render service hosts /api/pos-deals and reads the existing Postgres recipes. No new tables are needed. Shopify's official @shopify/shopify-api library verifies POS session signatures and audience; the route also checks Head Happy destination/issuer, user and expiry. Only Shopify extension origins receive CORS access. Builder cookies do not authorize this endpoint. Responses omit component costs and staff history.
+The existing Render service hosts `/api/pos-deals`, `/definition` and `/quote`, and reads the existing Postgres recipes. The guided definition returns eligible colours and stock; quotes validate exact selections and the requested number of deals. No new tables are needed. Shopify's official @shopify/shopify-api library verifies POS session signatures and audience; the route also checks Head Happy destination/issuer, user and expiry. Only Shopify extension origins receive CORS access. Builder cookies do not authorize this endpoint. Responses omit component costs and staff history.
 
 Private Render variables:
 
@@ -38,9 +42,9 @@ Missing configuration disables only the POS endpoint. No secret belongs in sourc
 
 ## Validation and release
 
-At the repository root: node --test tests/*.test.js. CI also uses real PostgreSQL 16 and browser checks. In this folder run pnpm test, pnpm typecheck, pnpm build:check, pnpm validate and pnpm build.
+At the repository root: `node --test tests/*.test.js` and `node tests/pos-guide-browser.mjs`. CI also uses real PostgreSQL 16 and existing builder browser checks. The guide browser test runs the actual Preact modal with simulated Shopify cart APIs; it is not the native POS runtime. In this folder run `pnpm test`, `pnpm typecheck`, `pnpm build:check`, `pnpm validate` and `pnpm build`.
 
-Deploy only to headhappy-bundle-preview, then update the existing Shopify app. The production location service is separate. The app home now explains how to add the POS tile.
+Deploy only to headhappy-bundle-preview **before** updating the existing Shopify app: the guide needs the new `/definition` endpoint. The production location service is separate. The app home and builder help explain the guided flow.
 
 The installed Shopify AI Toolkit UI validator cannot start because its own TypeScript dependency is missing. Pinned 2026.10.2 Shopify types, offline bundling and the Shopify CLI build provide local validation. Do not claim the Toolkit validator or a native sale passed when they did not.
 

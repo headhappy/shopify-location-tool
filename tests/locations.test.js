@@ -30,3 +30,31 @@ test('stock row and CSV retain old columns and append DisplayLocation2',async()=
 test('both stock JSON formats include Display 2 on every exported variant',async()=>{const rows=fixture();for(const v of rows)v.inventoryItem={id:'gid://shopify/InventoryItem/1',tracked:true,inventoryLevels:{nodes:[{quantities:[{name:'available',quantity:5}],location:{id:'L1',name:'Shop'}}]}};const {graph}=graphFor(rows);for(const byLocation of [false,true]){const output=await stockRows(graph,{status:'ACTIVE'},byLocation);assert.equal(output.length,3);assert.equal(output[0].DisplayLocation2,'Window 2 (LOD)');}});
 test('all new GraphQL reads place the four metafields on variants, not product owners',()=>{for(const query of [VARIANT_FIELDS,STOCK_QUERY,STOCK_BY_LOCATION_QUERY]){assert.match(query,/display_loc_2/);assert.doesNotMatch(query,/product\s*\{[^}]*metafield/);}});
 test('catalogue follows every page and refuses a non-advancing cursor',async()=>{expireLocationSearchCache();let n=0;const v=fixture();const graph=async()=>({productVariants:{nodes:[v[n++]],pageInfo:n===1?{hasNextPage:true,endCursor:'next'}:{hasNextPage:false,endCursor:null}}});assert.equal((await listLocationLabels(graph)).locations.find(x=>x.code==='Till').variantCount,1);expireLocationSearchCache();await assert.rejects(()=>listLocationLabels(async()=>({productVariants:{nodes:[],pageInfo:{hasNextPage:true,endCursor:null}}})),/did not advance/);});
+
+test('label tag search matches exact tags case-insensitively and includes every variant',async()=>{
+  const rows=fixture();rows[0].product.tags=['Sale Summer'];rows[2].product.tags=['Sale Summer Extra'];
+  const {graph,calls}=graphFor(rows),{request}=appFor(graph);
+  const r=await request('POST','/api/labels/tag-search',{tag:' sale summer '});
+  assert.equal(r.code,200);assert.deepEqual(r.data.rows.map(v=>v.id).sort(),[id(101),id(102)]);
+  assert.equal(calls[0].variables.query,'tag:"sale summer"');
+  assert.equal(calls.some(c=>c.query.includes('mutation')),false);
+  assert.equal((await request('POST','/api/labels/tag-search',{tag:'missing'})).data.rows.length,0);
+  const before=calls.length;
+  for(const tag of ['',null,{},'a\nb','a'.repeat(256)])assert.equal((await request('POST','/api/labels/tag-search',{tag})).code,400);
+  assert.equal(calls.length,before);
+});
+
+test('tag search follows all pages, deduplicates, and rejects incomplete results',async()=>{
+  const {findLabelTagMatches}=await import('../server/location-search.js');
+  const rows=fixture();rows.forEach(v=>v.product.tags=['DEAL']);let page=0;
+  const result=await findLabelTagMatches(async(_q,vars)=>{
+    assert.equal(vars.after,page===0?null:'next');
+    return {productVariants:{nodes:page++===0?[rows[0],rows[1]]:[rows[1],rows[2]],pageInfo:{hasNextPage:page===1,endCursor:'next'}}};
+  },'DEAL');
+  assert.equal(result.length,3);assert.equal(page,2);
+  await assert.rejects(()=>findLabelTagMatches(async()=>({productVariants:{nodes:rows,pageInfo:{hasNextPage:true,endCursor:'same'}}}),'DEAL'),/did not advance/);
+  await assert.rejects(()=>findLabelTagMatches(async()=>({}),'DEAL'),/Incomplete/);
+  let query;
+  await findLabelTagMatches(async(_q,v)=>{query=v.query;return {productVariants:{nodes:[],pageInfo:{hasNextPage:false}}};},'a" OR tag:b\\c');
+  assert.equal(query,'tag:"a\\" OR tag:b\\\\c"');
+});

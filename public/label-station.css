@@ -125,7 +125,7 @@ h2 { margin: 0; font-size: 20px; line-height: 1.2; letter-spacing: -.015em; }
   white-space: nowrap;
 }
 
-.search-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 9px; }
+.search-form { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 9px; }
 input, select, textarea {
   width: 100%;
   border: 1px solid #98a2b3;

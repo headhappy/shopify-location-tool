@@ -1,7 +1,7 @@
 import { LOCATION_FIELDS, LOCATION_SCHEMA, clean, locationKey, physicalLocation, parseDisplay } from '../public/location-fields.js';
 export const VARIANT_FIELDS = `id title sku barcode price inventoryQuantity
  ${LOCATION_FIELDS.map(f=>`${f.alias}:metafield(namespace:"${f.namespace}",key:"${f.key}"){value}`).join('\n')}
- product{id title handle vendor status}`;
+ product{id title handle vendor status tags}`;
 let cache={expiresAt:0,rows:[]}, pending=null, revision=0;
 export function locationRow(v,p=v.product||{}) {
   const variantTitle=v.title&&v.title!=='Default Title'?v.title:'';
@@ -51,6 +51,26 @@ export async function labelVariants(graph,ids){
   const data=await graph(`query LabelVariants($ids:[ID!]!){nodes(ids:$ids){... on ProductVariant{${VARIANT_FIELDS}}}}`,{ids});
   if(!Array.isArray(data.nodes))throw new Error('Incomplete Shopify variant response.');
   return data.nodes.filter(Boolean).map(v=>locationRow(v));
+}
+export const LABEL_TAG_QUERY = `query LabelTagVariants($query:String!,$after:String){productVariants(first:100,after:$after,query:$query){pageInfo{hasNextPage endCursor}nodes{${VARIANT_FIELDS}}}}`;
+export async function findLabelTagMatches(graph,tag){
+  const raw=clean(tag),needle=norm(raw);
+  if(!raw)return [];
+  const query=`tag:"${raw.replace(/\\/g,'\\\\').replace(/"/g,'\\"')}"`;
+  const rows=new Map(),cursors=new Set();let after=null;
+  do{
+    const data=await graph(LABEL_TAG_QUERY,{query,after}),connection=data.productVariants;
+    if(!connection?.pageInfo||!Array.isArray(connection.nodes))throw new Error('Incomplete Shopify tag search response.');
+    for(const v of connection.nodes){
+      if(v.product?.tags?.some(t=>norm(t)===needle))rows.set(v.id,locationRow(v));
+    }
+    if(!connection.pageInfo.hasNextPage)break;
+    after=connection.pageInfo.endCursor;
+    if(!after||cursors.has(after))throw new Error('Tag search pagination did not advance.');
+    cursors.add(after);
+    if(cursors.size>=200)throw new Error('This tag matches too many variants. Use a more specific tag.');
+  }while(after);
+  return [...rows.values()].sort((a,b)=>a.title.localeCompare(b.title)||a.sku.localeCompare(b.sku));
 }
 async function contents(graph,term,exact){
   const target=locationKey(term);let rows=[];

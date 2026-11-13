@@ -1,0 +1,47 @@
+/* Location labels only. Product, staff, QR and calibration layouts are unchanged. */
+.template-location {
+  grid-template-rows: 2.2mm 10.4mm minmax(0, 1fr);
+  gap: .45mm;
+}
+.template-location .location-type-readable {
+  min-width: 0;
+  align-self: center;
+  overflow: visible;
+  font-family: Arial, Helvetica, sans-serif;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+  text-align: center;
+}
+.template-location .location-code-readable {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: .5mm;
+  min-width: 0;
+  min-height: 0;
+  overflow: visible;
+  font-family: Arial, Helvetica, sans-serif;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: normal;
+  text-overflow: clip;
+}
+.template-location .location-code-line {
+  display: block;
+  flex: 0 0 auto;
+  max-width: 100%;
+  line-height: 1;
+  white-space: nowrap;
+  text-overflow: clip;
+}
+.template-location .label-barcode { min-height: 0; }
+/* The queue must show the complete code too, not just the label artwork. */
+.queue-row[data-source-type="location"] .queue-item-button strong {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+}

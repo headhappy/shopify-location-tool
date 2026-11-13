@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {locationTextLayout,locationTextWarning,renderLocationText} from '../public/label-location-layout.js';
+import {locationTextLayout,locationTextWarning,renderLocationText,locationQrPayload} from '../public/label-location-layout.js';
 
 for (const code of ['BLUE 2 BIN 1','BLUE 2 BIN 14','BLUE 2 BIN 140','BLUE 2 BIN 1400','BLUE 2 BIN14','BLUE 2 BIN-14','Blue 2 bin 14']) {
   test(`preserves and splits ${code}`, () => {
@@ -35,3 +35,13 @@ test('empty and numeric values cannot break rendering',()=>{
   assert.deepEqual(locationTextLayout(null).lines,[]);
   assert.equal(locationTextLayout(123).code,'123');
 });
+
+for(const loc of ['BLUE 2 BIN 0','BLUE 2 BIN 1','BLUE 2 BIN 10','BLUE 2 BIN 001','BLUE 2 BIN 14']){
+  test(`QR content and compact text preserve ${loc}`,()=>{
+    assert.equal(locationQrPayload(loc),loc);
+    const print=renderLocationText(loc,'BULK',18);
+    assert.ok(print.includes('>'+loc.split(' BIN ')[1]+'</span>')===false || print.includes('BIN '+loc.split(' BIN ')[1]));
+    assert.ok(print.includes('BIN '+loc.split(' BIN ')[1]));
+    assert.equal(locationTextLayout(loc,18).lines.join(' '),loc);
+  });
+}

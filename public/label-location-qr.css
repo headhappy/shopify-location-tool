@@ -1,0 +1,14 @@
+/* Only QR location labels; all other label templates remain unchanged. */
+.template-location-qr { grid-template-columns: 16.8mm minmax(0,1fr); grid-template-rows: 1fr; gap: .65mm; padding: 1.1mm; }
+.template-location-qr .location-qr-symbol { display: grid; place-items: center; align-self: center; width: 16.8mm; height: 20mm; min-width: 0; overflow: hidden; background: #fff; }
+.template-location-qr .location-qr-symbol svg { display: block; width: 100%; height: auto; max-height: 100%; }
+.template-location-qr .location-qr-details { display: grid; grid-template-rows: 2.5mm minmax(0,1fr); gap: .8mm; align-items: center; justify-items: center; min-width: 0; overflow: hidden; }
+.template-location-qr .location-type-readable { width: 100%; }
+.template-location-qr .location-code-readable { display: flex; flex-direction: column; gap: 1mm; justify-content: center; align-items: center; width: 100%; min-width: 0; min-height: 0; overflow: hidden; }
+.template-location-qr .location-code-line { max-width: 100%; text-align: center; white-space: nowrap; }
+.location-style-choice { display: grid; gap: 7px; border: 1px solid #c7d7fe; border-radius: 12px; padding: 12px; background: #f8faff; }
+.location-style-choice label { color: #1849a9; font-size: 13px; font-weight: 850; }
+.location-style-choice select { min-height: 40px; }
+.queue-type-column { display: grid; gap: 5px; min-width: 0; }
+.queue-type-column .queue-template-select { width: 100%; }
+.queue-location-style { width: 100%; min-height: 35px; padding: 6px; font-size: 12px; font-weight: 750; }

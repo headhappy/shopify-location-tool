@@ -1,0 +1,19 @@
+api_version = "2026-10"
+
+[[extensions]]
+type = "ui_extension"
+# Change the merchant-facing name of the extension in locales/en.default.json
+name = "Head Happy deals"
+uid = "3dcb3f36-8226-695b-7666-acff39b17552ea9afa1a"
+handle = "head-happy-deals"
+description = "Apply the Crown rolling kit deal to the actual scanned items. One-deal pilot at 31 Cowgate."
+
+# module: file that contains your extension’s source code
+# target: location where your extension appears in POS
+[[extensions.targeting]]
+module = "./src/Tile.jsx"
+target = "pos.home.tile.render"
+
+[[extensions.targeting]]
+module = "./src/Modal.jsx"
+target = "pos.home.modal.render"
